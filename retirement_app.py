@@ -795,15 +795,6 @@ with st.sidebar.form(key=f"scenario_form_{selected_profile}"):
         )
 
     with st.expander("📜 Pension Annuity / Defined Benefit", expanded=False):
-        if selected_profile == "Karen":
-            st.info(
-                "ℹ️ **RCPS Nuvos DB Pension Rules:**\n"
-                "* **Accrual:** 2.3% of pensionable pay per year\n"
-                "* **Normal Pension Age (NPA):** Age 65 (15 Oct 2045)\n"
-                "* **Earliest Retirement Age (NMPA):** Age 57 (16 Oct 2037) subject to actuarial reduction\n"
-                "* **Inflation Protection:** Increases in line with CPI inflation"
-            )
-
         annuity_annual = st.number_input("Annual Pension / Annuity (£)", min_value=0.0, value=float(curr_data.get("annuity_annual", 0.0)), step=500.0)
         annuity_cost = st.number_input("Cost of Annuity (£)", min_value=0.0, value=float(curr_data.get("annuity_cost", 0.0)), step=5000.0, help="Leave at £0 for Defined Benefit / Final Salary pensions.")
         annuity_start_date = st.date_input(
