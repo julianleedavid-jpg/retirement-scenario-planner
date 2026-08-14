@@ -945,7 +945,7 @@ else:
 
 st.subheader(f"Showing Profile: **{selected_profile}**")
 
-# CSS snippet to reduce font size for top metrics and enable dataframe header wrapping
+# CSS snippet to reduce metric font size AND force header text wrapping inside Streamlit dataframe headers
 st.markdown(
     """
     <style>
@@ -955,10 +955,24 @@ st.markdown(
     [data-testid="stMetricLabel"] {
         font-size: 0.85rem !important;
     }
+
+    /* Force wrap headers inside Streamlit dataframe headers */
+    [data-testid="stDataFrame"] div[data-testid="stTable"] th,
+    [data-testid="stDataFrame"] .st-ae,
+    [data-testid="stDataFrame"] div[role="columnheader"] span,
     [data-testid="stDataFrame"] div[role="columnheader"] {
         white-space: normal !important;
-        word-wrap: break-word !important;
-        text-align: center !important;
+        word-break: break-word !important;
+        overflow-wrap: break-word !important;
+        line-height: 1.2 !important;
+        height: auto !important;
+        vertical-align: bottom !important;
+    }
+
+    /* Force header container to expand vertically for multi-line text */
+    [data-testid="stDataFrame"] div[role="row"]:first-child {
+        height: auto !important;
+        max-height: 60px !important;
     }
     </style>
     """,
@@ -984,24 +998,29 @@ st.line_chart(
 
 st.subheader("📋 Balances and Drawdown Table (Up to Age 100)")
 
-# Configure narrow columns matching figure widths and wrapping header titles
+# Configure narrow columns matching figure widths (using fixed tight pixel widths)
 table_column_config = {
-    "desired_monthly_income": st.column_config.NumberColumn("Desired Monthly\nIncome", format="£%,d", width="small"),
-    "sipp": st.column_config.NumberColumn("SIPP", format="£%,d", width="small"),
-    "workplace_total": st.column_config.NumberColumn("Workplace Pension\nTotal", format="£%,d", width="small"),
-    "isa": st.column_config.NumberColumn("S&S ISA", format="£%,d", width="small"),
-    "other_investment": st.column_config.NumberColumn("Other\nInvestment", format="£%,d", width="small"),
-    "total_portfolio": st.column_config.NumberColumn("Total\nPortfolio", format="£%,d", width="small"),
-    "annuity_income": st.column_config.NumberColumn("Annuity\nIncome", format="£%,d", width="small"),
-    "state_pension_income": st.column_config.NumberColumn("State Pension\nIncome", format="£%,d", width="small"),
-    "pot_income_drawn": st.column_config.NumberColumn("Pot Income\nDrawn", format="£%,d", width="small"),
-    "monthly_net_income": st.column_config.NumberColumn("Monthly Net\nIncome", format="£%,d", width="small"),
-    "annual_income": st.column_config.NumberColumn("Annual\nIncome", format="£%,d", width="small"),
-    "tax_paid": st.column_config.NumberColumn("Tax\nPaid", format="£%,d", width="small"),
+    "desired_monthly_income": st.column_config.NumberColumn("Desired\nMonthly\nIncome", format="£%,d", width=85),
+    "sipp": st.column_config.NumberColumn("SIPP", format="£%,d", width=75),
+    "workplace_total": st.column_config.NumberColumn("Workplace\nPension\nTotal", format="£%,d", width=90),
+    "isa": st.column_config.NumberColumn("S&S ISA", format="£%,d", width=75),
+    "other_investment": st.column_config.NumberColumn("Other\nInvestment", format="£%,d", width=90),
+    "total_portfolio": st.column_config.NumberColumn("Total\nPortfolio", format="£%,d", width=95),
+    "annuity_income": st.column_config.NumberColumn("Annuity\nIncome", format="£%,d", width=80),
+    "state_pension_income": st.column_config.NumberColumn("State\nPension\nIncome", format="£%,d", width=85),
+    "pot_income_drawn": st.column_config.NumberColumn("Pot Income\nDrawn", format="£%,d", width=85),
+    "monthly_net_income": st.column_config.NumberColumn("Monthly Net\nIncome", format="£%,d", width=85),
+    "annual_income": st.column_config.NumberColumn("Annual\nIncome", format="£%,d", width=85),
+    "tax_paid": st.column_config.NumberColumn("Tax\nPaid", format="£%,d", width=70),
 }
 
-# setting use_container_width=False contracts table width tight to figures
-st.dataframe(active_df, column_config=table_column_config, height=1120, use_container_width=False)
+st.dataframe(
+    active_df, 
+    column_config=table_column_config, 
+    height=1120, 
+    use_container_width=False,
+    hide_index=True
+)
 
 st.markdown("---")
 
