@@ -97,6 +97,7 @@ DEFAULT_PROFILES = {
         "crash_pct": 0.0,
         "crash_date": get_next_tax_year_start(),
         "view_mode": "Tax Year",
+        "notes": "",
     },
     "Karen": {
         "dob": date(1980, 10, 16),
@@ -139,6 +140,7 @@ DEFAULT_PROFILES = {
         "crash_pct": 0.0,
         "crash_date": get_next_tax_year_start(),
         "view_mode": "Tax Year",
+        "notes": "",
     },
 }
 
@@ -902,6 +904,7 @@ with st.sidebar.form(key=f"scenario_form_{selected_profile}"):
             "state_pension_amount": state_pension_amount,
             "state_pension_growth": state_pension_growth,
             "view_mode": view_mode,
+            "notes": curr_data.get("notes", ""),
         }
         save_scenarios()
         st.toast(f"Updated and saved '{selected_profile}'!", icon="✅")
@@ -1054,8 +1057,26 @@ st.dataframe(active_df, column_config=table_column_config, height=670, use_conta
 st.markdown("---")
 
 # ----------------------------------------------------------------------
-# 6. Reference Notes & Drawdown Engine Logic
+# 6. Editable Notes & Reference Sections
 # ----------------------------------------------------------------------
+
+# Collapsible & Editable Notes Section
+with st.expander("📝 Custom Profile Notes", expanded=False):
+    notes_key = f"notes_input_{selected_profile}"
+    user_notes = st.text_area(
+        "Notes & Key Assumptions for this Profile:",
+        value=active_p.get("notes", ""),
+        height=180,
+        key=notes_key,
+        placeholder="Type any custom notes, reminders, or scenario assumptions here...",
+    )
+    
+    if st.button("💾 Save Notes", key=f"save_notes_btn_{selected_profile}"):
+        st.session_state.scenarios[selected_profile]["notes"] = user_notes
+        save_scenarios()
+        st.toast(f"Notes saved for profile '{selected_profile}'!", icon="💾")
+
+st.markdown("---")
 
 col_notes1, col_notes2 = st.columns(2)
 
