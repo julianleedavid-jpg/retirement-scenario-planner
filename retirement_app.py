@@ -980,7 +980,7 @@ st.line_chart(
 st.subheader("📋 Balances and Drawdown Table (Up to Age 100)")
 
 # ----------------------------------------------------------------------
-# Render Table as Clean HTML for 100% Guaranteed Wrapping & Narrow Styling
+# Render Table as High-Contrast HTML with Soft, Unified Borders
 # ----------------------------------------------------------------------
 
 column_headers = {
@@ -1016,13 +1016,13 @@ formatted_df = table_df.copy()
 for col in currency_cols:
     formatted_df[col] = formatted_df[col].apply(lambda x: f"£{x:,.0f}")
 
-# Custom HTML/CSS styling for complete text wrapping and tight column widths
+# Custom HTML/CSS styling for complete text wrapping, bright pure white data text, and soft unified borders
 html_table_css = """
 <style>
 .custom-table-container {
     max-height: 800px;
     overflow-y: auto;
-    border: 1px solid #444;
+    border: 1px solid rgba(255, 255, 255, 0.12);
     border-radius: 6px;
     margin-bottom: 20px;
 }
@@ -1036,10 +1036,11 @@ html_table_css = """
     position: sticky;
     top: 0;
     background-color: #1e222a;
-    color: #e0e0e0;
+    color: #ffffff;
     padding: 8px 6px;
     text-align: center;
-    border-bottom: 2px solid #444;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.15);
+    border-right: 1px solid rgba(255, 255, 255, 0.05);
     font-size: 11px;
     font-weight: 600;
     white-space: normal;
@@ -1047,12 +1048,20 @@ html_table_css = """
     max-width: 90px;
     line-height: 1.25;
 }
+.custom-table th:last-child {
+    border-right: none;
+}
 .custom-table td {
-    padding: 6px 6px;
+    padding: 7px 6px;
     text-align: right;
-    border-bottom: 1px solid #2d3139;
-    color: #d0d0d0;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+    border-right: 1px solid rgba(255, 255, 255, 0.04);
+    color: #ffffff;
+    font-weight: 400;
     white-space: nowrap;
+}
+.custom-table td:last-child {
+    border-right: none;
 }
 .custom-table td:first-child, .custom-table td:nth-child(2) {
     text-align: center;
@@ -1061,7 +1070,7 @@ html_table_css = """
     background-color: rgba(255, 255, 255, 0.02);
 }
 .custom-table tr:hover {
-    background-color: rgba(255, 255, 255, 0.05);
+    background-color: rgba(255, 255, 255, 0.06);
 }
 </style>
 """
