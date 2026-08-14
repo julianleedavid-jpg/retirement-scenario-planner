@@ -483,6 +483,19 @@ class RetirementEngine:
                     (1.0 + self.scenario.inflation_rate) ** years_since_start
                 )
 
+            # Sweep excess "Other Investment" above 2x desired annual income into S&S ISA on the 1st of each month
+            if current_date.day == 1:
+                current_desired_annual = inflated_monthly_income * 12.0
+                threshold_other = 2.0 * current_desired_annual
+                if other > threshold_other:
+                    excess_other = other - threshold_other
+                    isa_allowance_rem = max(0.0, self.ISA_ANNUAL_ALLOWANCE - isa_credited_this_tax_year)
+                    to_isa_from_other = min(excess_other, isa_allowance_rem)
+                    if to_isa_from_other > 0:
+                        other -= to_isa_from_other
+                        isa += to_isa_from_other
+                        isa_credited_this_tax_year += to_isa_from_other
+
             # Post-Retirement Drawdown Execution (Runs on the 1st of each month)
             if is_retired and current_date.day == 1:
                 if current_annual_annuity > 0:
