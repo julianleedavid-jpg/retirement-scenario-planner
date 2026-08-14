@@ -55,46 +55,89 @@ st.title("📈 Retirement Forecast & Drawdown Engine")
 # 1. JSON Persistence & Default Scenarios
 # ----------------------------------------------------------------------
 
-DEFAULT_SCENARIO = {
-    "dob": date(1969, 12, 1),
-    "ret_age": 62,
-    "monthly_inc": 2500.0,
-    "increased_monthly_inc": 0.0,
-    "increase_date": get_next_tax_year_start(),
-    "reduced_monthly_inc": 1875.0,
-    "reduced_inc_age": 80,
-    "inflation_rate": 3.0,
-    "sipp_bal": 52500.0,
-    "sipp_ret": 7.0,
-    "sipp_contrib": 500.0,
-    "wp_bal": 250000.0,
-    "wp_ret": 7.0,
-    "wp_contrib": 700.0,
-    "isa_bal": 105000.0,
-    "isa_ret": 7.0,
-    "isa_contrib": 0.0,
-    "other_bal": 57000.0,
-    "other_ret": 3.0,
-    "other_contrib": 0.0,
-    "has_state_pension": True,
-    "state_pension_age": 67,
-    "state_pension_amount": 12548.0,
-    "state_pension_growth": 2.5,
-    "annuity_annual": 0.0,
-    "annuity_cost": 0.0,
-    "annuity_start_date": date(2031, 12, 1),
-    "lump_sum_1_amt": 0.0,
-    "lump_sum_1_date": get_next_tax_year_start(),
-    "lump_sum_1_pot": "S&S ISA",
-    "lump_sum_2_amt": 0.0,
-    "lump_sum_2_date": get_next_tax_year_start(),
-    "lump_sum_2_pot": "S&S ISA",
-    "lump_sum_3_amt": 0.0,
-    "lump_sum_3_date": get_next_tax_year_start(),
-    "lump_sum_3_pot": "S&S ISA",
-    "crash_pct": 0.0,
-    "crash_date": get_next_tax_year_start(),
-    "view_mode": "Tax Year",
+DEFAULT_PROFILES = {
+    "Base Case": {
+        "dob": date(1969, 12, 1),
+        "ret_age": 62,
+        "monthly_inc": 2500.0,
+        "increased_monthly_inc": 0.0,
+        "increase_date": get_next_tax_year_start(),
+        "reduced_monthly_inc": 1875.0,
+        "reduced_inc_age": 80,
+        "inflation_rate": 3.0,
+        "sipp_bal": 52500.0,
+        "sipp_ret": 7.0,
+        "sipp_contrib": 500.0,
+        "wp_bal": 250000.0,
+        "wp_ret": 7.0,
+        "wp_contrib": 700.0,
+        "isa_bal": 105000.0,
+        "isa_ret": 7.0,
+        "isa_contrib": 0.0,
+        "other_bal": 57000.0,
+        "other_ret": 3.0,
+        "other_contrib": 0.0,
+        "has_state_pension": True,
+        "state_pension_age": 67,
+        "state_pension_amount": 12548.0,
+        "state_pension_growth": 2.5,
+        "annuity_annual": 0.0,
+        "annuity_cost": 0.0,
+        "annuity_start_date": date(2031, 12, 1),
+        "lump_sum_1_amt": 0.0,
+        "lump_sum_1_date": get_next_tax_year_start(),
+        "lump_sum_1_pot": "S&S ISA",
+        "lump_sum_2_amt": 0.0,
+        "lump_sum_2_date": get_next_tax_year_start(),
+        "lump_sum_2_pot": "S&S ISA",
+        "lump_sum_3_amt": 0.0,
+        "lump_sum_3_date": get_next_tax_year_start(),
+        "lump_sum_3_pot": "S&S ISA",
+        "crash_pct": 0.0,
+        "crash_date": get_next_tax_year_start(),
+        "view_mode": "Tax Year",
+    },
+    "Karen": {
+        "dob": date(1980, 10, 16),
+        "ret_age": 65,
+        "monthly_inc": 2500.0,
+        "increased_monthly_inc": 0.0,
+        "increase_date": get_next_tax_year_start(),
+        "reduced_monthly_inc": 1875.0,
+        "reduced_inc_age": 80,
+        "inflation_rate": 3.0,
+        "sipp_bal": 0.0,
+        "sipp_ret": 7.0,
+        "sipp_contrib": 0.0,
+        "wp_bal": 0.0,
+        "wp_ret": 7.0,
+        "wp_contrib": 0.0,
+        "isa_bal": 0.0,
+        "isa_ret": 7.0,
+        "isa_contrib": 0.0,
+        "other_bal": 0.0,
+        "other_ret": 3.0,
+        "other_contrib": 0.0,
+        "has_state_pension": True,
+        "state_pension_age": 67,
+        "state_pension_amount": 12548.0,
+        "state_pension_growth": 2.5,
+        "annuity_annual": 15929.0,  # Accrued RCPS Nuvos DB Pension as of 2025
+        "annuity_cost": 0.0,        # DB Defined Benefit scheme (no capital purchase needed)
+        "annuity_start_date": date(2045, 10, 15), # Nuvos Normal Pension Age (65)
+        "lump_sum_1_amt": 0.0,
+        "lump_sum_1_date": get_next_tax_year_start(),
+        "lump_sum_1_pot": "S&S ISA",
+        "lump_sum_2_amt": 0.0,
+        "lump_sum_2_date": get_next_tax_year_start(),
+        "lump_sum_2_pot": "S&S ISA",
+        "lump_sum_3_amt": 0.0,
+        "lump_sum_3_date": get_next_tax_year_start(),
+        "lump_sum_3_pot": "S&S ISA",
+        "crash_pct": 0.0,
+        "crash_date": get_next_tax_year_start(),
+        "view_mode": "Tax Year",
+    },
 }
 
 
@@ -122,14 +165,16 @@ def deserialize_scenario(scen_dict: dict) -> dict:
 
 
 def load_scenarios() -> dict:
+    scenarios = {k: v.copy() for k, v in DEFAULT_PROFILES.items()}
     if os.path.exists(JSON_FILE):
         try:
             with open(JSON_FILE, "r") as f:
                 data = json.load(f)
-            return {name: deserialize_scenario(scen) for name, scen in data.items()}
+            loaded = {name: deserialize_scenario(scen) for name, scen in data.items()}
+            scenarios.update(loaded)
         except Exception:
             pass
-    return {"Base Case": DEFAULT_SCENARIO.copy()}
+    return scenarios
 
 
 def save_scenarios():
@@ -145,7 +190,7 @@ def save_scenarios():
 if "scenarios" not in st.session_state:
     st.session_state.scenarios = load_scenarios()
 
-if "active_scenario_name" not in st.session_state:
+if "active_scenario_name" not in st.session_state or st.session_state.active_scenario_name not in st.session_state.scenarios:
     st.session_state.active_scenario_name = list(st.session_state.scenarios.keys())[0]
 
 
@@ -615,6 +660,9 @@ class RetirementEngine:
 st.sidebar.header("📁 Profile & Scenario Manager")
 
 scenario_list = list(st.session_state.scenarios.keys())
+if st.session_state.active_scenario_name not in scenario_list:
+    st.session_state.active_scenario_name = scenario_list[0]
+
 selected_profile = st.sidebar.selectbox(
     "Select Active Profile:",
     options=scenario_list,
@@ -634,6 +682,17 @@ with st.sidebar.expander("➕ Add New Profile / Copy Current"):
             st.rerun()
         elif new_profile_name in st.session_state.scenarios:
             st.warning("Profile name already exists.")
+
+# Delete Non-Default Profile Feature
+if selected_profile not in DEFAULT_PROFILES:
+    if st.sidebar.button(f"🗑️ Delete Profile '{selected_profile}'", use_container_width=True):
+        del st.session_state.scenarios[selected_profile]
+        save_scenarios()
+        st.session_state.active_scenario_name = list(st.session_state.scenarios.keys())[0]
+        st.toast(f"Deleted profile '{selected_profile}'", icon="🗑️")
+        st.rerun()
+else:
+    st.sidebar.caption("🔒 Default profile (cannot be deleted)")
 
 curr_data = st.session_state.scenarios[selected_profile]
 
@@ -735,11 +794,20 @@ with st.sidebar.form(key=f"scenario_form_{selected_profile}"):
             format="DD/MM/YYYY",
         )
 
-    with st.expander("📜 Pension Annuity", expanded=False):
-        annuity_annual = st.number_input("Annual Pension Annuity (£)", min_value=0.0, value=float(curr_data.get("annuity_annual", 0.0)), step=500.0)
-        annuity_cost = st.number_input("Cost of Annuity (£)", min_value=0.0, value=float(curr_data.get("annuity_cost", 0.0)), step=5000.0)
+    with st.expander("📜 Pension Annuity / Defined Benefit", expanded=False):
+        if selected_profile == "Karen":
+            st.info(
+                "ℹ️ **RCPS Nuvos DB Pension Rules:**\n"
+                "* **Accrual:** 2.3% of pensionable pay per year\n"
+                "* **Normal Pension Age (NPA):** Age 65 (15 Oct 2045)\n"
+                "* **Earliest Retirement Age (NMPA):** Age 57 (16 Oct 2037) subject to actuarial reduction\n"
+                "* **Inflation Protection:** Increases in line with CPI inflation"
+            )
+
+        annuity_annual = st.number_input("Annual Pension / Annuity (£)", min_value=0.0, value=float(curr_data.get("annuity_annual", 0.0)), step=500.0)
+        annuity_cost = st.number_input("Cost of Annuity (£)", min_value=0.0, value=float(curr_data.get("annuity_cost", 0.0)), step=5000.0, help="Leave at £0 for Defined Benefit / Final Salary pensions.")
         annuity_start_date = st.date_input(
-            "Annuity Start Date",
+            "Annuity / DB Pension Start Date",
             value=curr_data.get("annuity_start_date", date(2031, 12, 1)),
             min_value=date.today(),
             format="DD/MM/YYYY",
