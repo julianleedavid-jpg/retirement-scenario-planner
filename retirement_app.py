@@ -1048,7 +1048,7 @@ table_column_config = {
     "tax_paid": st.column_config.NumberColumn("Tax Paid", format="£%,d"),
 }
 
-st.dataframe(active_df, column_config=table_column_config, height=1120, use_container_width=True)
+st.dataframe(active_df, column_config=table_column_config, height=670, use_container_width=True)
 
 st.markdown("---")
 
