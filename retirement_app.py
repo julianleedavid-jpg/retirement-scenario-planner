@@ -62,7 +62,7 @@ DEFAULT_PROFILES = {
         "monthly_inc": 2500.0,
         "increased_monthly_inc": 0.0,
         "increase_date": get_next_tax_year_start(),
-        "reduced_monthly_inc": 1875.0, # 75% of 2500
+        "reduced_monthly_inc": 2500.0,
         "reduced_inc_age": 80,
         "inflation_rate": 3.0,
         "sipp_bal": 52500.0,
@@ -105,7 +105,7 @@ DEFAULT_PROFILES = {
         "monthly_inc": 2500.0,
         "increased_monthly_inc": 0.0,
         "increase_date": get_next_tax_year_start(),
-        "reduced_monthly_inc": 1875.0, # 75% of 2500
+        "reduced_monthly_inc": 2500.0,
         "reduced_inc_age": 80,
         "inflation_rate": 3.0,
         "sipp_bal": 0.0,
@@ -237,7 +237,7 @@ class Scenario:
     inflate_annuity_to_start: bool = False
     increased_monthly_inc: float = 0.0
     increase_date: date = field(default_factory=get_next_tax_year_start)
-    reduced_monthly_inc: float = 1875.0
+    reduced_monthly_inc: float = 2500.0
     reduced_inc_age: int = 80
     crash_pct: float = 0.0
     crash_date: date = field(default_factory=get_next_tax_year_start)
@@ -762,12 +762,13 @@ with st.sidebar.form(key=f"scenario_form_{selected_profile}"):
             min_value=date.today(),
             format="DD/MM/YYYY",
         )
+        default_reduced_inc = curr_data.get("reduced_monthly_inc", curr_data["monthly_inc"])
         reduced_monthly_inc = st.number_input(
             "Reduce Income To (£)",
             min_value=0.0,
-            value=float(curr_data.get("reduced_monthly_inc", monthly_inc * 0.75)),
+            value=float(default_reduced_inc),
             step=50.0,
-            help="Defaults automatically to 75% of Desired Monthly Income.",
+            help="Defaults to matching Desired Monthly Income unless explicitly changed.",
         )
         reduced_inc_age = st.number_input(
             "Reduced Income Age",
@@ -982,7 +983,7 @@ scenario_obj = Scenario(
     inflate_annuity_to_start=active_p.get("inflate_annuity_to_start", False),
     increased_monthly_inc=active_p.get("increased_monthly_inc", 0.0),
     increase_date=active_p.get("increase_date", get_next_tax_year_start()),
-    reduced_monthly_inc=active_p.get("reduced_monthly_inc", active_p["monthly_inc"] * 0.75),
+    reduced_monthly_inc=active_p.get("reduced_monthly_inc", active_p["monthly_inc"]),
     reduced_inc_age=int(active_p.get("reduced_inc_age", 80)),
     crash_pct=active_p.get("crash_pct", 0.0),
     crash_date=active_p.get("crash_date", get_next_tax_year_start()),
