@@ -567,7 +567,7 @@ class RetirementEngine:
                         needed_net -= draw
                         monthly_drawn_from_pots += draw
 
-            # Workplace Pension Total combines DC balance + active Pension Annuity
+            # Workplace Pension Total combines DC pot balances + active Annuity Income (annualised)
             workplace_total_val = wp_taxable + wp_tax_free + (annuity_monthly * 12.0 if annuity_monthly > 0 else 0.0)
             total_portfolio = sipp + wp_taxable + wp_tax_free + isa + other
             total_monthly_income = monthly_drawn_from_pots + state_pension_monthly + annuity_monthly
@@ -1039,7 +1039,7 @@ table_column_config = {
     "isa": st.column_config.NumberColumn("S&S ISA", format="£%,d"),
     "other_investment": st.column_config.NumberColumn("Other Investment", format="£%,d"),
     "total_portfolio": st.column_config.NumberColumn("Total Portfolio", format="£%,d"),
-    "annuity_income": st.column_config.NumberColumn("Pension Annuity", format="£%,d"),
+    "annuity_income": st.column_config.NumberColumn("Annuity Income", format="£%,d"),
     "state_pension_income": st.column_config.NumberColumn("State Pension Income", format="£%,d"),
     "pot_income_drawn": st.column_config.NumberColumn("Pot Income Drawn", format="£%,d"),
     "monthly_net_income": st.column_config.NumberColumn("Monthly Net Income", format="£%,d"),
