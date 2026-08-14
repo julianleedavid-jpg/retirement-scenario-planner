@@ -277,6 +277,7 @@ class RetirementEngine:
         annuity_purchased = False
         crash_applied = False
         crash_active_until = None
+        crash_capped_income = None
         lump_sums_applied = [False] * len(self.scenario.lump_sums)
 
         while current_date <= target_100_date:
@@ -326,6 +327,16 @@ class RetirementEngine:
                     crash_active_until = date(
                         self.scenario.crash_date.year + 2, 2, 28
                     )
+
+                # Rule: If crash > 5%, cap desired monthly income to State Pension amount at crash date
+                if self.scenario.crash_pct > 5.0:
+                    years_to_crash = self.scenario.crash_date.year - start_date.year - (
+                        (self.scenario.crash_date.month, self.scenario.crash_date.day) < (start_date.month, start_date.day)
+                    )
+                    annual_sp_at_crash = self.scenario.state_pension_amount * (
+                        (1.0 + self.scenario.state_pension_growth) ** max(0, years_to_crash)
+                    )
+                    crash_capped_income = annual_sp_at_crash / 12.0
 
             # Deduct Annuity Purchase Cost
             if current_date >= self.scenario.annuity_start_date and not annuity_purchased:
@@ -385,19 +396,30 @@ class RetirementEngine:
                 (current_date.month, current_date.day) < (start_date.month, start_date.day)
             )
 
-            if age >= self.scenario.reduced_inc_age:
-                base_target_income = self.scenario.reduced_monthly_inc
-            elif (
-                self.scenario.increased_monthly_inc > 0
-                and current_date >= self.scenario.increase_date
-            ):
-                base_target_income = self.scenario.increased_monthly_inc
-            else:
-                base_target_income = self.monthly_income
-
-            inflated_monthly_income = base_target_income * (
-                (1.0 + self.scenario.inflation_rate) ** years_since_start
+            # Determine Target Desired Income
+            in_crash_window = (
+                crash_applied
+                and crash_active_until is not None
+                and current_date < crash_active_until
             )
+
+            if in_crash_window and self.scenario.crash_pct > 5.0 and crash_capped_income is not None:
+                # Apply reduced target income during crash window
+                inflated_monthly_income = crash_capped_income
+            else:
+                if age >= self.scenario.reduced_inc_age:
+                    base_target_income = self.scenario.reduced_monthly_inc
+                elif (
+                    self.scenario.increased_monthly_inc > 0
+                    and current_date >= self.scenario.increase_date
+                ):
+                    base_target_income = self.scenario.increased_monthly_inc
+                else:
+                    base_target_income = self.monthly_income
+
+                inflated_monthly_income = base_target_income * (
+                    (1.0 + self.scenario.inflation_rate) ** years_since_start
+                )
 
             # Post-Retirement Drawdown Execution
             if is_retired and current_date.day == 1:
@@ -445,13 +467,7 @@ class RetirementEngine:
                 else:
                     needed_net = inflated_monthly_income - guaranteed_monthly_income
 
-                in_crash_recovery = (
-                    crash_applied
-                    and crash_active_until is not None
-                    and current_date < crash_active_until
-                )
-
-                if in_crash_recovery:
+                if in_crash_window:
                     if needed_net > 0 and other > 0:
                         draw = min(other, needed_net)
                         other -= draw
@@ -994,10 +1010,11 @@ with col_notes1:
            * **State Pension:** Applied automatically once you reach your configured State Pension age, escalating annually by your growth input.
            * **Excess Income Recycling:** If guaranteed income exceeds your target inflation-adjusted monthly income, the surplus is automatically deposited into your **S&S ISA** (up to the **£20,000/year** limit), with any remaining excess directed to **Other Investments**.
 
-        2. **Market Stress Buffer Strategy (Crash Active):**
-           * If a market crash occurs, the engine enters a **2-year recovery window**.
-           * During recovery, equity pots (**SIPP**, **Workplace Pension**, **ISA**) are frozen to avoid selling down depressed assets. 
-           * All required income is drawn exclusively from **Other Investments** (cash/bonds).
+        2. **Market Stress Buffer Strategy (> 5% Crash Trigger):**
+           * If a market crash of **> 5%** occurs, the engine enters a **2-year recovery window**.
+           * During recovery, equity pots (**SIPP**, **Workplace Pension**, **ISA**) are protected from panic sell-offs.
+           * **Income Reduction Rule:** Your target monthly income is automatically reduced to match the **State Pension amount** calculated at the date of the crash.
+           * **Post-Recovery:** After the 2-year window expires, your desired monthly income resumes at its full inflation-adjusted level.
 
         3. **Standard Tax-Optimized Drawdown Hierarchy:**
            When guaranteed income is insufficient, the required shortfall is satisfied using the following priority order:
