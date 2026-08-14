@@ -28,29 +28,25 @@ st.set_page_config(page_title="Retirement Scenario Planner", layout="wide")
 def check_password():
     """Returns True if the user enters the correct password."""
     def password_entered():
-        # Check against secret stored in Streamlit Cloud settings / secrets.toml
         if st.session_state["password_input"] == st.secrets.get("app_password", ""):
             st.session_state["password_correct"] = True
-            del st.session_state["password_input"]  # Don't keep password in memory
+            del st.session_state["password_input"]
         else:
             st.session_state["password_correct"] = False
 
     if "password_correct" not in st.session_state:
-        # First run, prompt for password
         st.text_input("🔒 Enter Access Password:", type="password", on_change=password_entered, key="password_input")
         return False
     elif not st.session_state["password_correct"]:
-        # Wrong password entered
         st.text_input("🔒 Enter Access Password:", type="password", on_change=password_entered, key="password_input")
         st.error("❌ Incorrect password")
         return False
     else:
-        # Correct password
         return True
 
 
 if not check_password():
-    st.stop()  # Stop app execution here until password is valid
+    st.stop()
 
 
 st.title("📈 Retirement Forecast & Drawdown Engine")
@@ -103,7 +99,6 @@ DEFAULT_SCENARIO = {
 
 
 def serialize_scenario(scen_dict: dict) -> dict:
-    """Converts datetime.date objects to ISO string format for JSON compatibility."""
     serialized = {}
     for k, v in scen_dict.items():
         if isinstance(v, date):
@@ -114,7 +109,6 @@ def serialize_scenario(scen_dict: dict) -> dict:
 
 
 def deserialize_scenario(scen_dict: dict) -> dict:
-    """Converts ISO date strings back into datetime.date objects."""
     deserialized = {}
     for k, v in scen_dict.items():
         if isinstance(v, str):
@@ -128,7 +122,6 @@ def deserialize_scenario(scen_dict: dict) -> dict:
 
 
 def load_scenarios() -> dict:
-    """Loads saved profiles from local JSON storage."""
     if os.path.exists(JSON_FILE):
         try:
             with open(JSON_FILE, "r") as f:
@@ -140,7 +133,6 @@ def load_scenarios() -> dict:
 
 
 def save_scenarios():
-    """Saves active session state profiles to local JSON storage."""
     data = {
         name: serialize_scenario(scen)
         for name, scen in st.session_state.scenarios.items()
@@ -328,7 +320,6 @@ class RetirementEngine:
                         self.scenario.crash_date.year + 2, 2, 28
                     )
 
-                # Rule: If crash > 5%, cap desired monthly income to State Pension amount at crash date
                 if self.scenario.crash_pct > 5.0:
                     years_to_crash = self.scenario.crash_date.year - start_date.year - (
                         (self.scenario.crash_date.month, self.scenario.crash_date.day) < (start_date.month, start_date.day)
@@ -396,7 +387,6 @@ class RetirementEngine:
                 (current_date.month, current_date.day) < (start_date.month, start_date.day)
             )
 
-            # Determine Target Desired Income
             in_crash_window = (
                 crash_applied
                 and crash_active_until is not None
@@ -404,7 +394,6 @@ class RetirementEngine:
             )
 
             if in_crash_window and self.scenario.crash_pct > 5.0 and crash_capped_income is not None:
-                # Apply reduced target income during crash window
                 inflated_monthly_income = crash_capped_income
             else:
                 if age >= self.scenario.reduced_inc_age:
@@ -423,7 +412,6 @@ class RetirementEngine:
 
             # Post-Retirement Drawdown Execution
             if is_retired and current_date.day == 1:
-                # Rule 0: Apply Pension Annuity FIRST (Inflation-Linked after Year 1)
                 if (
                     self.scenario.annuity_annual > 0
                     and current_date >= self.scenario.annuity_start_date
@@ -438,7 +426,6 @@ class RetirementEngine:
                     annuity_monthly = inflated_annuity_annual / 12.0
                     taxable_income_this_tax_year += annuity_monthly
 
-                # Rule 0b: Apply State Pension with annual escalation
                 if (
                     self.scenario.has_state_pension
                     and age >= self.scenario.state_pension_age
@@ -449,10 +436,8 @@ class RetirementEngine:
                     state_pension_monthly = inflated_state_pension_annual / 12.0
                     taxable_income_this_tax_year += state_pension_monthly
 
-                # Calculate Guaranteed Income (Annuity + State Pension)
                 guaranteed_monthly_income = annuity_monthly + state_pension_monthly
 
-                # Excess Income Allocation: Up to £20,000/yr to ISA, remainder to Other Investment
                 if guaranteed_monthly_income > inflated_monthly_income:
                     excess_income = guaranteed_monthly_income - inflated_monthly_income
                     isa_allowance_rem = max(0.0, self.ISA_ANNUAL_ALLOWANCE - isa_credited_this_tax_year)
@@ -661,7 +646,6 @@ with st.sidebar.form(key=f"scenario_form_{selected_profile}"):
         label="🔄 Recalculate Forecast", use_container_width=True, key="recalc_top"
     )
 
-    # Section 1: UNCOLLAPSED BY DEFAULT (expanded=True)
     with st.expander("👤 Core Profile & Income Goals", expanded=True):
         dob = st.date_input(
             "Date of Birth",
@@ -712,7 +696,6 @@ with st.sidebar.form(key=f"scenario_form_{selected_profile}"):
             step=0.1,
         )
 
-    # Section 2: COLLAPSED BY DEFAULT (expanded=False)
     with st.expander("💵 Lump Sum Injections (Up to 3)", expanded=False):
         pot_options = ["S&S ISA", "SIPP", "Workplace Pension", "Other Investment"]
 
@@ -731,7 +714,6 @@ with st.sidebar.form(key=f"scenario_form_{selected_profile}"):
         ls3_date = st.date_input("Lump Sum 3 Date", value=curr_data.get("lump_sum_3_date", get_next_tax_year_start()), min_value=date.today(), format="DD/MM/YYYY")
         ls3_pot = st.selectbox("Lump Sum 3 Target Pot", options=pot_options, index=pot_options.index(curr_data.get("lump_sum_3_pot", "S&S ISA")))
 
-    # Section 3: COLLAPSED BY DEFAULT (expanded=False)
     try:
         max_crash_date = date(dob.year + 100, dob.month, dob.day)
     except ValueError:
@@ -753,7 +735,6 @@ with st.sidebar.form(key=f"scenario_form_{selected_profile}"):
             format="DD/MM/YYYY",
         )
 
-    # Section 4: COLLAPSED BY DEFAULT (expanded=False)
     with st.expander("📜 Pension Annuity", expanded=False):
         annuity_annual = st.number_input("Annual Pension Annuity (£)", min_value=0.0, value=float(curr_data.get("annuity_annual", 0.0)), step=500.0)
         annuity_cost = st.number_input("Cost of Annuity (£)", min_value=0.0, value=float(curr_data.get("annuity_cost", 0.0)), step=5000.0)
@@ -764,14 +745,12 @@ with st.sidebar.form(key=f"scenario_form_{selected_profile}"):
             format="DD/MM/YYYY",
         )
 
-    # Section 5: COLLAPSED BY DEFAULT (expanded=False)
     with st.expander("🏛️ State Pension", expanded=False):
         has_state_pension = st.checkbox("Include State Pension", value=curr_data.get("has_state_pension", True))
         state_pension_age = st.number_input("State Pension Start Age", min_value=60, max_value=75, value=int(curr_data.get("state_pension_age", 67)))
         state_pension_amount = st.number_input("State Pension Annual (£)", min_value=0.0, value=float(curr_data.get("state_pension_amount", 12548.0)), step=100.0)
         state_pension_growth = st.slider("State Pension Annual Growth (%)", min_value=0.0, max_value=10.0, value=float(curr_data.get("state_pension_growth", 2.5)), step=0.1)
 
-    # Section 6: COLLAPSED BY DEFAULT (expanded=False)
     with st.expander("💰 Pot Balances, Returns & Contributions", expanded=False):
         st.markdown("##### SIPP")
         sipp_bal = st.number_input("SIPP Pot Balance (£)", value=float(curr_data["sipp_bal"]), step=5000.0)
@@ -793,7 +772,6 @@ with st.sidebar.form(key=f"scenario_form_{selected_profile}"):
         other_ret = st.slider("Other Return (%)", 0.0, 15.0, float(curr_data.get("other_ret", 3.0)))
         other_contrib = st.number_input("Other Monthly Contribution (£)", value=float(curr_data.get("other_contrib", 0.0)), step=50.0)
 
-    # Section 7: COLLAPSED BY DEFAULT (expanded=False)
     with st.expander("👁️ Display View", expanded=False):
         view_mode = st.radio(
             "Display View Mode",
@@ -933,7 +911,6 @@ current_age = (
     - ((today.month, today.day) < (active_p["dob"].month, active_p["dob"].day))
 )
 
-# Calculate age where total portfolio reaches 0 post-retirement or final balance at 100
 retired_df = active_df[active_df["is_retired"]]
 depleted_rows = retired_df[retired_df["total_portfolio"] <= 0]
 
@@ -945,7 +922,6 @@ else:
 
 st.subheader(f"Showing Profile: **{selected_profile}**")
 
-# CSS snippet to reduce font size for top metrics
 st.markdown(
     """
     <style>
@@ -979,22 +955,67 @@ st.line_chart(
 
 st.subheader("📋 Balances and Drawdown Table (Up to Age 100)")
 
+# Custom CSS targeting native st.dataframe headers to enable multiline rendering
+st.markdown(
+    """
+    <style>
+    [data-testid="stDataFrame"] div[role="columnheader"] {
+        white-space: pre-wrap !important;
+        word-wrap: break-word !important;
+        line-height: 1.2 !important;
+        font-size: 11px !important;
+        text-align: center !important;
+    }
+    [data-testid="stDataFrame"] [data-role="grid-header"] {
+        max-height: 48px !important;
+        min-height: 48px !important;
+    }
+    </style>
+    """,
+    unsafe_allow_html=True,
+)
+
 table_column_config = {
-    "desired_monthly_income": st.column_config.NumberColumn("Desired Monthly\nIncome", format="£%,d"),
-    "sipp": st.column_config.NumberColumn("SIPP", format="£%,d"),
-    "workplace_total": st.column_config.NumberColumn("Workplace Pension\nTotal", format="£%,d"),
-    "isa": st.column_config.NumberColumn("S&S ISA", format="£%,d"),
-    "other_investment": st.column_config.NumberColumn("Other Investment", format="£%,d"),
-    "total_portfolio": st.column_config.NumberColumn("Total Portfolio", format="£%,d"),
-    "annuity_income": st.column_config.NumberColumn("Annuity Income", format="£%,d"),
-    "state_pension_income": st.column_config.NumberColumn("State Pension Income", format="£%,d"),
-    "pot_income_drawn": st.column_config.NumberColumn("Pot Income Drawn", format="£%,d"),
-    "monthly_net_income": st.column_config.NumberColumn("Monthly Net Income", format="£%,d"),
-    "annual_income": st.column_config.NumberColumn("Annual Income", format="£%,d"),
-    "tax_paid": st.column_config.NumberColumn("Tax Paid", format="£%,d"),
+    "desired_monthly_income": st.column_config.NumberColumn(
+        "Desired Monthly\nIncome", format="£%,d", width="small"
+    ),
+    "sipp": st.column_config.NumberColumn("SIPP", format="£%,d", width="small"),
+    "workplace_total": st.column_config.NumberColumn(
+        "Workplace Pension\nTotal", format="£%,d", width="small"
+    ),
+    "isa": st.column_config.NumberColumn("S&S ISA", format="£%,d", width="small"),
+    "other_investment": st.column_config.NumberColumn(
+        "Other\nInvestment", format="£%,d", width="small"
+    ),
+    "total_portfolio": st.column_config.NumberColumn(
+        "Total\nPortfolio", format="£%,d", width="small"
+    ),
+    "annuity_income": st.column_config.NumberColumn(
+        "Annuity\nIncome", format="£%,d", width="small"
+    ),
+    "state_pension_income": st.column_config.NumberColumn(
+        "State Pension\nIncome", format="£%,d", width="small"
+    ),
+    "pot_income_drawn": st.column_config.NumberColumn(
+        "Pot Income\nDrawn", format="£%,d", width="small"
+    ),
+    "monthly_net_income": st.column_config.NumberColumn(
+        "Monthly Net\nIncome", format="£%,d", width="small"
+    ),
+    "annual_income": st.column_config.NumberColumn(
+        "Annual\nIncome", format="£%,d", width="small"
+    ),
+    "tax_paid": st.column_config.NumberColumn(
+        "Tax Paid", format="£%,d", width="small"
+    ),
 }
 
-st.dataframe(active_df, column_config=table_column_config, height=1120, use_container_width=True)
+st.dataframe(
+    active_df,
+    column_config=table_column_config,
+    height=1120,
+    use_container_width=True,
+)
 
 st.markdown("---")
 
