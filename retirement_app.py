@@ -641,9 +641,9 @@ st.sidebar.markdown("---")
 with st.sidebar.form(key=f"scenario_form_{selected_profile}"):
     st.header(f"⚙️ Edit '{selected_profile}'")
 
-    # Additional submit button above edit input fields
+    # Explicit unique key parameters fix StreamlitDuplicateElementKey error
     submit_top = st.form_submit_button(
-        label="🔄 Recalculate Forecast", use_container_width=True
+        label="🔄 Recalculate Forecast", use_container_width=True, key="recalc_top"
     )
 
     dob = st.date_input(
@@ -779,7 +779,7 @@ with st.sidebar.form(key=f"scenario_form_{selected_profile}"):
     )
 
     submit_bottom = st.form_submit_button(
-        label="🔄 Recalculate Forecast", use_container_width=True
+        label="🔄 Recalculate Forecast", use_container_width=True, key="recalc_bottom"
     )
 
     if submit_top or submit_bottom:
