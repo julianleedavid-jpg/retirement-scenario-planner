@@ -83,7 +83,7 @@ DEFAULT_PROFILES = {
         "state_pension_growth": 2.5,
         "annuity_annual": 0.0,
         "annuity_cost": 0.0,
-        "annuity_start_date": date(2031, 12, 1),
+        "annuity_start_age": 62,
         "inflate_annuity_to_start": False,
         "lump_sum_1_amt": 0.0,
         "lump_sum_1_date": get_next_tax_year_start(),
@@ -126,7 +126,7 @@ DEFAULT_PROFILES = {
         "state_pension_growth": 2.5,
         "annuity_annual": 15929.0,  # Accrued RCPS Nuvos DB Pension as of 2025
         "annuity_cost": 0.0,
-        "annuity_start_date": date(2045, 10, 15), # Nuvos Normal Pension Age (65)
+        "annuity_start_age": 65, # Nuvos Normal Pension Age
         "inflate_annuity_to_start": False,
         "lump_sum_1_amt": 0.0,
         "lump_sum_1_date": get_next_tax_year_start(),
@@ -233,7 +233,7 @@ class Scenario:
     inflation_rate: float = 0.03
     annuity_annual: float = 0.0
     annuity_cost: float = 0.0
-    annuity_start_date: date = field(default_factory=get_next_tax_year_start)
+    annuity_start_age: int = 65
     inflate_annuity_to_start: bool = False
     increased_monthly_inc: float = 0.0
     increase_date: date = field(default_factory=get_next_tax_year_start)
@@ -305,6 +305,12 @@ class RetirementEngine:
         except ValueError:
             target_100_date = date(self.dob.year + 100, 2, 28)
 
+        # Derive exact annuity start date from annuity_start_age
+        try:
+            annuity_start_date = date(self.dob.year + self.scenario.annuity_start_age, self.dob.month, self.dob.day)
+        except ValueError:
+            annuity_start_date = date(self.dob.year + self.scenario.annuity_start_age, 2, 28)
+
         sipp = self.scenario.sipp.balance
         wp_taxable = self.scenario.workplace_taxable.balance
         wp_tax_free = self.scenario.workplace_tax_free.balance
@@ -324,8 +330,8 @@ class RetirementEngine:
 
         # Pre-calculate base starting annuity at Start Date if inflation toggle is checked
         base_annuity = self.scenario.annuity_annual
-        if self.scenario.inflate_annuity_to_start and self.scenario.annuity_start_date > start_date:
-            years_to_start = (self.scenario.annuity_start_date - start_date).days / 365.25
+        if self.scenario.inflate_annuity_to_start and annuity_start_date > start_date:
+            years_to_start = (annuity_start_date - start_date).days / 365.25
             base_annuity *= ((1.0 + self.scenario.inflation_rate) ** max(0.0, years_to_start))
 
         while current_date <= target_100_date:
@@ -338,12 +344,11 @@ class RetirementEngine:
                 isa_credited_this_tax_year = 0.0
                 last_tax_year = current_tax_year
 
-            # Evaluate active annual annuity amount every day once start date reached
+            # Evaluate active annual annuity amount every day once target annuity start age reached
             current_annual_annuity = 0.0
-            if current_date >= self.scenario.annuity_start_date and base_annuity > 0:
-                annuity_start = self.scenario.annuity_start_date
-                years_since_annuity = current_date.year - annuity_start.year - (
-                    (current_date.month, current_date.day) < (annuity_start.month, annuity_start.day)
+            if current_date >= annuity_start_date and base_annuity > 0:
+                years_since_annuity = current_date.year - annuity_start_date.year - (
+                    (current_date.month, current_date.day) < (annuity_start_date.month, annuity_start_date.day)
                 )
                 current_annual_annuity = base_annuity * (
                     (1.0 + self.scenario.inflation_rate) ** max(0, years_since_annuity)
@@ -397,7 +402,7 @@ class RetirementEngine:
                     crash_capped_income = annual_sp_at_crash / 12.0
 
             # Deduct Annuity Purchase Cost
-            if current_date >= self.scenario.annuity_start_date and not annuity_purchased:
+            if current_date >= annuity_start_date and not annuity_purchased:
                 cost_rem = self.scenario.annuity_cost
                 if cost_rem > 0:
                     draw_other = min(other, cost_rem)
@@ -812,16 +817,18 @@ with st.sidebar.form(key=f"scenario_form_{selected_profile}"):
     with st.expander("📜 Pension Annuity / Defined Benefit", expanded=False):
         annuity_annual = st.number_input("Annual Pension / Annuity (£)", min_value=0.0, value=float(curr_data.get("annuity_annual", 0.0)), step=500.0)
         annuity_cost = st.number_input("Cost of Annuity (£)", min_value=0.0, value=float(curr_data.get("annuity_cost", 0.0)), step=5000.0, help="Leave at £0 for Defined Benefit / Final Salary pensions.")
-        annuity_start_date = st.date_input(
-            "Annuity / DB Pension Start Date",
-            value=curr_data.get("annuity_start_date", date(2031, 12, 1)),
-            min_value=date.today(),
-            format="DD/MM/YYYY",
+        annuity_start_age = st.number_input(
+            "Annuity / DB Pension Start Age",
+            min_value=50,
+            max_value=85,
+            value=int(curr_data.get("annuity_start_age", 65)),
+            step=1,
+            help="Set the age at which pension annuity / Defined Benefit income payments begin.",
         )
         inflate_annuity_to_start = st.checkbox(
-            "Inflate Pension/Annuity to Start Date",
+            "Inflate Pension/Annuity to Start Age",
             value=curr_data.get("inflate_annuity_to_start", False),
-            help="Check this if the entered annual figure is in today's money. It will grow by inflation until the start date before payments begin.",
+            help="Check this if the entered annual figure is in today's money. It will grow by inflation until the start age before payments begin.",
         )
 
     with st.expander("🏛️ State Pension", expanded=False):
@@ -885,7 +892,7 @@ with st.sidebar.form(key=f"scenario_form_{selected_profile}"):
             "crash_date": crash_date,
             "annuity_annual": annuity_annual,
             "annuity_cost": annuity_cost,
-            "annuity_start_date": annuity_start_date,
+            "annuity_start_age": annuity_start_age,
             "inflate_annuity_to_start": inflate_annuity_to_start,
             "sipp_bal": sipp_bal,
             "sipp_ret": sipp_ret,
@@ -963,7 +970,7 @@ scenario_obj = Scenario(
     inflation_rate=active_p.get("inflation_rate", 3.0) / 100.0,
     annuity_annual=active_p.get("annuity_annual", 0.0),
     annuity_cost=active_p.get("annuity_cost", 0.0),
-    annuity_start_date=active_p.get("annuity_start_date", date(2031, 12, 1)),
+    annuity_start_age=int(active_p.get("annuity_start_age", 65)),
     inflate_annuity_to_start=active_p.get("inflate_annuity_to_start", False),
     increased_monthly_inc=active_p.get("increased_monthly_inc", 0.0),
     increase_date=active_p.get("increase_date", get_next_tax_year_start()),
