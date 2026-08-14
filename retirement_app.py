@@ -732,6 +732,12 @@ with st.sidebar.form(key=f"scenario_form_{selected_profile}"):
         ls3_pot = st.selectbox("Lump Sum 3 Target Pot", options=pot_options, index=pot_options.index(curr_data.get("lump_sum_3_pot", "S&S ISA")))
 
     # Section 3: COLLAPSED BY DEFAULT (expanded=False)
+    # Calculate max crash date (up to age 100)
+    try:
+        max_crash_date = date(dob.year + 100, dob.month, dob.day)
+    except ValueError:
+        max_crash_date = date(dob.year + 100, 2, 28)
+
     with st.expander("📉 Market Stress Testing", expanded=False):
         crash_pct = st.slider(
             "Market Crash (%)",
@@ -744,6 +750,7 @@ with st.sidebar.form(key=f"scenario_form_{selected_profile}"):
             "Crash Date",
             value=curr_data.get("crash_date", get_next_tax_year_start()),
             min_value=date.today(),
+            max_value=max_crash_date,
             format="DD/MM/YYYY",
         )
 
@@ -1011,7 +1018,7 @@ with col_notes1:
            * **Excess Income Recycling:** If guaranteed income exceeds your target inflation-adjusted monthly income, the surplus is automatically deposited into your **S&S ISA** (up to the **£20,000/year** limit), with any remaining excess directed to **Other Investments**.
 
         2. **Market Stress Buffer Strategy (> 5% Crash Trigger):**
-           * If a market crash of **> 5%** occurs, the engine enters a **2-year recovery window**.
+           * If a market crash of **> 5%** occurs (configurable at any age up to 100), the engine enters a **2-year recovery window**.
            * During recovery, equity pots (**SIPP**, **Workplace Pension**, **ISA**) are protected from panic sell-offs.
            * **Income Reduction Rule:** Your target monthly income is automatically reduced to match the **State Pension amount** calculated at the date of the crash.
            * **Post-Recovery:** After the 2-year window expires, your desired monthly income resumes at its full inflation-adjusted level.
