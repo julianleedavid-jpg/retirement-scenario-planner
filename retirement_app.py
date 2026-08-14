@@ -945,7 +945,7 @@ else:
 
 st.subheader(f"Showing Profile: **{selected_profile}**")
 
-# CSS snippet to reduce metric font size AND force header text wrapping inside Streamlit dataframe headers
+# CSS snippet for top metrics
 st.markdown(
     """
     <style>
@@ -954,25 +954,6 @@ st.markdown(
     }
     [data-testid="stMetricLabel"] {
         font-size: 0.85rem !important;
-    }
-
-    /* Force wrap headers inside Streamlit dataframe headers */
-    [data-testid="stDataFrame"] div[data-testid="stTable"] th,
-    [data-testid="stDataFrame"] .st-ae,
-    [data-testid="stDataFrame"] div[role="columnheader"] span,
-    [data-testid="stDataFrame"] div[role="columnheader"] {
-        white-space: normal !important;
-        word-break: break-word !important;
-        overflow-wrap: break-word !important;
-        line-height: 1.2 !important;
-        height: auto !important;
-        vertical-align: bottom !important;
-    }
-
-    /* Force header container to expand vertically for multi-line text */
-    [data-testid="stDataFrame"] div[role="row"]:first-child {
-        height: auto !important;
-        max-height: 60px !important;
     }
     </style>
     """,
@@ -998,29 +979,108 @@ st.line_chart(
 
 st.subheader("📋 Balances and Drawdown Table (Up to Age 100)")
 
-# Configure narrow columns matching figure widths (using fixed tight pixel widths)
-table_column_config = {
-    "desired_monthly_income": st.column_config.NumberColumn("Desired\nMonthly\nIncome", format="£%,d", width=85),
-    "sipp": st.column_config.NumberColumn("SIPP", format="£%,d", width=75),
-    "workplace_total": st.column_config.NumberColumn("Workplace\nPension\nTotal", format="£%,d", width=90),
-    "isa": st.column_config.NumberColumn("S&S ISA", format="£%,d", width=75),
-    "other_investment": st.column_config.NumberColumn("Other\nInvestment", format="£%,d", width=90),
-    "total_portfolio": st.column_config.NumberColumn("Total\nPortfolio", format="£%,d", width=95),
-    "annuity_income": st.column_config.NumberColumn("Annuity\nIncome", format="£%,d", width=80),
-    "state_pension_income": st.column_config.NumberColumn("State\nPension\nIncome", format="£%,d", width=85),
-    "pot_income_drawn": st.column_config.NumberColumn("Pot Income\nDrawn", format="£%,d", width=85),
-    "monthly_net_income": st.column_config.NumberColumn("Monthly Net\nIncome", format="£%,d", width=85),
-    "annual_income": st.column_config.NumberColumn("Annual\nIncome", format="£%,d", width=85),
-    "tax_paid": st.column_config.NumberColumn("Tax\nPaid", format="£%,d", width=70),
+# ----------------------------------------------------------------------
+# Render Table as Clean HTML for 100% Guaranteed Wrapping & Narrow Styling
+# ----------------------------------------------------------------------
+
+column_headers = {
+    x_col: "Tax Year" if active_p["view_mode"] == "Tax Year" else "Year / Month",
+    "age": "Age",
+    "desired_monthly_income": "Desired Monthly Income",
+    "sipp": "SIPP",
+    "workplace_total": "Workplace Pension Total",
+    "isa": "S&S ISA",
+    "other_investment": "Other Investment",
+    "total_portfolio": "Total Portfolio",
+    "annuity_income": "Annuity Income",
+    "state_pension_income": "State Pension Income",
+    "pot_income_drawn": "Pot Income Drawn",
+    "monthly_net_income": "Monthly Net Income",
+    "annual_income": "Annual Income",
+    "tax_paid": "Tax Paid",
 }
 
-st.dataframe(
-    active_df, 
-    column_config=table_column_config, 
-    height=1120, 
-    use_container_width=False,
-    hide_index=True
-)
+# Select and order table columns
+display_cols = list(column_headers.keys())
+table_df = active_df[display_cols].copy()
+
+# Format numeric values as currency
+currency_cols = [
+    "desired_monthly_income", "sipp", "workplace_total", "isa",
+    "other_investment", "total_portfolio", "annuity_income",
+    "state_pension_income", "pot_income_drawn", "monthly_net_income",
+    "annual_income", "tax_paid"
+]
+
+formatted_df = table_df.copy()
+for col in currency_cols:
+    formatted_df[col] = formatted_df[col].apply(lambda x: f"£{x:,.0f}")
+
+# Custom HTML/CSS styling for complete text wrapping and tight column widths
+html_table_css = """
+<style>
+.custom-table-container {
+    max-height: 800px;
+    overflow-y: auto;
+    border: 1px solid #444;
+    border-radius: 6px;
+    margin-bottom: 20px;
+}
+.custom-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    font-size: 12px;
+}
+.custom-table th {
+    position: sticky;
+    top: 0;
+    background-color: #1e222a;
+    color: #e0e0e0;
+    padding: 8px 6px;
+    text-align: center;
+    border-bottom: 2px solid #444;
+    font-size: 11px;
+    font-weight: 600;
+    white-space: normal;
+    word-wrap: break-word;
+    max-width: 90px;
+    line-height: 1.25;
+}
+.custom-table td {
+    padding: 6px 6px;
+    text-align: right;
+    border-bottom: 1px solid #2d3139;
+    color: #d0d0d0;
+    white-space: nowrap;
+}
+.custom-table td:first-child, .custom-table td:nth-child(2) {
+    text-align: center;
+}
+.custom-table tr:nth-child(even) {
+    background-color: rgba(255, 255, 255, 0.02);
+}
+.custom-table tr:hover {
+    background-color: rgba(255, 255, 255, 0.05);
+}
+</style>
+"""
+
+# Build HTML Table markup
+table_html = f"{html_table_css}<div class='custom-table-container'><table class='custom-table'><thead><tr>"
+for col in display_cols:
+    table_html += f"<th>{column_headers[col]}</th>"
+table_html += "</tr></thead><tbody>"
+
+for _, row in formatted_df.iterrows():
+    table_html += "<tr>"
+    for col in display_cols:
+        table_html += f"<td>{row[col]}</td>"
+    table_html += "</tr>"
+
+table_html += "</tbody></table></div>"
+
+st.markdown(table_html, unsafe_allow_html=True)
 
 st.markdown("---")
 
