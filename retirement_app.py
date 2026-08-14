@@ -604,7 +604,7 @@ class RetirementEngine:
             current_date += timedelta(days=1)
 
         df = pd.DataFrame(daily_records)
-        df["year_month"] = df["date"].apply(lambda d: d.strftime("%Y-%m"))
+        df["year_month"] = df.apply(lambda r: f"{r['date'].strftime('%Y-%m')} ({r['age']})", axis=1)
 
         # Monthly Snapshot Aggregation
         monthly_df = (
@@ -629,11 +629,15 @@ class RetirementEngine:
             .reset_index()
         )
 
+        # Add Age to Tax Year Label
+        df["tax_year_label"] = df.apply(lambda r: f"{r['tax_year']} ({r['age']})", axis=1)
+
         # Tax Year Snapshot Aggregation
         tax_year_df = (
-            df.groupby("tax_year")
+            df.groupby("tax_year_label")
             .agg({
                 "date": "last",
+                "tax_year": "last",
                 "age": "last",
                 "is_retired": "last",
                 "desired_monthly_income": "last",
@@ -650,6 +654,7 @@ class RetirementEngine:
                 "tax_paid": "sum",
             })
             .reset_index()
+            .rename(columns={"tax_year_label": "tax_year_with_age"})
         )
         tax_year_df["monthly_net_income"] = (tax_year_df["monthly_net_income"] / 12.0).round(0)
 
@@ -990,7 +995,7 @@ engine = RetirementEngine(
 m_df, ty_df = engine.run_simulation()
 
 active_df = ty_df if active_p["view_mode"] == "Tax Year" else m_df
-x_col = "tax_year" if active_p["view_mode"] == "Tax Year" else "year_month"
+x_col = "tax_year_with_age" if active_p["view_mode"] == "Tax Year" else "year_month"
 annual_inc = int(round(active_p["monthly_inc"] * 12.0))
 
 today = date.today()
