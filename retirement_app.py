@@ -475,7 +475,7 @@ class RetirementEngine:
                     (1.0 + self.scenario.inflation_rate) ** years_since_start
                 )
 
-            # Post-Retirement Drawdown Execution
+            # Post-Retirement Drawdown Execution (Runs on the 1st of each month)
             if is_retired and current_date.day == 1:
                 if current_annual_annuity > 0:
                     annuity_monthly = current_annual_annuity / 12.0
@@ -571,7 +571,7 @@ class RetirementEngine:
             # Workplace Pension Total incorporates DC pot balances + active annualised Annuity Value
             workplace_total_val = wp_taxable + wp_tax_free + current_annual_annuity
             total_portfolio = sipp + wp_taxable + wp_tax_free + isa + other
-            total_monthly_income = monthly_drawn_from_pots + state_pension_monthly + (current_annual_annuity / 12.0 if is_retired else 0.0)
+            total_monthly_income = monthly_drawn_from_pots + state_pension_monthly + annuity_monthly
 
             daily_records.append({
                 "date": current_date,
