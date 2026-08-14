@@ -568,7 +568,7 @@ class RetirementEngine:
                         needed_net -= draw
                         monthly_drawn_from_pots += draw
 
-            # Workplace Pension Total incorporates DC pot balances + annualised Annuity Value
+            # Workplace Pension Total incorporates DC pot balances + active annualised Annuity Value
             workplace_total_val = wp_taxable + wp_tax_free + current_annual_annuity
             total_portfolio = sipp + wp_taxable + wp_tax_free + isa + other
             total_monthly_income = monthly_drawn_from_pots + state_pension_monthly + (current_annual_annuity / 12.0 if is_retired else 0.0)
@@ -586,7 +586,7 @@ class RetirementEngine:
                 "isa": int(round(isa)),
                 "other_investment": int(round(other)),
                 "total_portfolio": int(round(total_portfolio)),
-                "annuity_income": int(round(current_annual_annuity / 12.0 if is_retired else 0.0)),
+                "annuity_income": int(round(current_annual_annuity if is_retired else 0.0)),
                 "state_pension_income": int(round(state_pension_monthly)),
                 "pot_income_drawn": int(round(monthly_drawn_from_pots)),
                 "monthly_net_income": int(round(total_monthly_income)),
@@ -1040,7 +1040,7 @@ table_column_config = {
     "isa": st.column_config.NumberColumn("S&S ISA", format="£%,d"),
     "other_investment": st.column_config.NumberColumn("Other Investment", format="£%,d"),
     "total_portfolio": st.column_config.NumberColumn("Total Portfolio", format="£%,d"),
-    "annuity_income": st.column_config.NumberColumn("Annuity Income", format="£%,d"),
+    "annuity_income": st.column_config.NumberColumn("Annuity Income (Annual)", format="£%,d"),
     "state_pension_income": st.column_config.NumberColumn("State Pension Income", format="£%,d"),
     "pot_income_drawn": st.column_config.NumberColumn("Pot Income Drawn", format="£%,d"),
     "monthly_net_income": st.column_config.NumberColumn("Monthly Net Income", format="£%,d"),
