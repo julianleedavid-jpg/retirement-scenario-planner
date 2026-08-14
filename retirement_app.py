@@ -352,7 +352,7 @@ class RetirementEngine:
                 if not lump_sums_applied[idx] and ls.amount > 0 and current_date >= ls.injection_date:
                     if ls.target_pot == "SIPP":
                         sipp += ls.amount
-                    elif ls.target_pot == "Workplace Pension":
+                    elif ls.target_pot == "Private Pension":
                         wp_tax_free += ls.amount * 0.25
                         wp_taxable += ls.amount * 0.75
                     elif ls.target_pot == "S&S ISA":
@@ -568,8 +568,8 @@ class RetirementEngine:
                         needed_net -= draw
                         monthly_drawn_from_pots += draw
 
-            # Workplace Pension Total incorporates DC pot balances + active annualised Annuity Value
-            workplace_total_val = wp_taxable + wp_tax_free + current_annual_annuity
+            # Strictly Defined Contribution pot balance for Private Pension (annuity excluded)
+            private_pension_val = wp_taxable + wp_tax_free
             total_portfolio = sipp + wp_taxable + wp_tax_free + isa + other
             total_monthly_income = monthly_drawn_from_pots + state_pension_monthly + annuity_monthly
 
@@ -581,7 +581,7 @@ class RetirementEngine:
                 "desired_monthly_income": int(round(inflated_monthly_income)),
                 "desired_annual_income": int(round(inflated_monthly_income * 12.0)),
                 "sipp": int(round(sipp)),
-                "workplace_total": int(round(workplace_total_val)),
+                "private_pension": int(round(private_pension_val)),
                 "workplace_tax_free": int(round(wp_tax_free)),
                 "workplace_taxable": int(round(wp_taxable)),
                 "isa": int(round(isa)),
@@ -609,7 +609,7 @@ class RetirementEngine:
                 "desired_monthly_income": "last",
                 "desired_annual_income": "last",
                 "sipp": "last",
-                "workplace_total": "last",
+                "private_pension": "last",
                 "isa": "last",
                 "other_investment": "last",
                 "total_portfolio": "last",
@@ -632,7 +632,7 @@ class RetirementEngine:
                 "desired_monthly_income": "last",
                 "desired_annual_income": "last",
                 "sipp": "last",
-                "workplace_total": "last",
+                "private_pension": "last",
                 "isa": "last",
                 "other_investment": "last",
                 "total_portfolio": "last",
@@ -650,7 +650,7 @@ class RetirementEngine:
             "desired_monthly_income",
             "desired_annual_income",
             "sipp",
-            "workplace_total",
+            "private_pension",
             "isa",
             "other_investment",
             "total_portfolio",
@@ -769,22 +769,22 @@ with st.sidebar.form(key=f"scenario_form_{selected_profile}"):
         )
 
     with st.expander("💵 Lump Sum Injections (Up to 3)", expanded=False):
-        pot_options = ["S&S ISA", "SIPP", "Workplace Pension", "Other Investment"]
+        pot_options = ["S&S ISA", "SIPP", "Private Pension", "Other Investment"]
 
         st.markdown("##### Lump Sum 1")
         ls1_amt = st.number_input("Lump Sum 1 Amount (£)", min_value=0.0, value=float(curr_data.get("lump_sum_1_amt", 0.0)), step=1000.0)
         ls1_date = st.date_input("Lump Sum 1 Date", value=curr_data.get("lump_sum_1_date", get_next_tax_year_start()), min_value=date.today(), format="DD/MM/YYYY")
-        ls1_pot = st.selectbox("Lump Sum 1 Target Pot", options=pot_options, index=pot_options.index(curr_data.get("lump_sum_1_pot", "S&S ISA")))
+        ls1_pot = st.selectbox("Lump Sum 1 Target Pot", options=pot_options, index=pot_options.index("Private Pension" if curr_data.get("lump_sum_1_pot") == "Workplace Pension" else curr_data.get("lump_sum_1_pot", "S&S ISA")))
 
         st.markdown("##### Lump Sum 2")
         ls2_amt = st.number_input("Lump Sum 2 Amount (£)", min_value=0.0, value=float(curr_data.get("lump_sum_2_amt", 0.0)), step=1000.0)
         ls2_date = st.date_input("Lump Sum 2 Date", value=curr_data.get("lump_sum_2_date", get_next_tax_year_start()), min_value=date.today(), format="DD/MM/YYYY")
-        ls2_pot = st.selectbox("Lump Sum 2 Target Pot", options=pot_options, index=pot_options.index(curr_data.get("lump_sum_2_pot", "S&S ISA")))
+        ls2_pot = st.selectbox("Lump Sum 2 Target Pot", options=pot_options, index=pot_options.index("Private Pension" if curr_data.get("lump_sum_2_pot") == "Workplace Pension" else curr_data.get("lump_sum_2_pot", "S&S ISA")))
 
         st.markdown("##### Lump Sum 3")
         ls3_amt = st.number_input("Lump Sum 3 Amount (£)", min_value=0.0, value=float(curr_data.get("lump_sum_3_amt", 0.0)), step=1000.0)
         ls3_date = st.date_input("Lump Sum 3 Date", value=curr_data.get("lump_sum_3_date", get_next_tax_year_start()), min_value=date.today(), format="DD/MM/YYYY")
-        ls3_pot = st.selectbox("Lump Sum 3 Target Pot", options=pot_options, index=pot_options.index(curr_data.get("lump_sum_3_pot", "S&S ISA")))
+        ls3_pot = st.selectbox("Lump Sum 3 Target Pot", options=pot_options, index=pot_options.index("Private Pension" if curr_data.get("lump_sum_3_pot") == "Workplace Pension" else curr_data.get("lump_sum_3_pot", "S&S ISA")))
 
     try:
         max_crash_date = date(dob.year + 100, dob.month, dob.day)
@@ -834,10 +834,10 @@ with st.sidebar.form(key=f"scenario_form_{selected_profile}"):
         sipp_ret = st.slider("SIPP Annual Return (%)", 0.0, 15.0, float(curr_data.get("sipp_ret", 7.0)))
         sipp_contrib = st.number_input("SIPP Monthly Contribution (£)", value=float(curr_data.get("sipp_contrib", 500.0)), step=50.0)
 
-        st.markdown("##### Workplace Pension")
-        wp_bal = st.number_input("Workplace Pension Total (£)", value=float(curr_data["wp_bal"]), step=5000.0)
-        wp_ret = st.slider("Workplace Return (%)", 0.0, 15.0, float(curr_data.get("wp_ret", 7.0)))
-        wp_contrib = st.number_input("Workplace Monthly Contribution (£)", value=float(curr_data.get("wp_contrib", 700.0)), step=50.0)
+        st.markdown("##### Private Pension")
+        wp_bal = st.number_input("Private Pension Total (£)", value=float(curr_data["wp_bal"]), step=5000.0)
+        wp_ret = st.slider("Private Pension Return (%)", 0.0, 15.0, float(curr_data.get("wp_ret", 7.0)))
+        wp_contrib = st.number_input("Private Pension Monthly Contribution (£)", value=float(curr_data.get("wp_contrib", 700.0)), step=50.0)
 
         st.markdown("##### Stocks & Shares ISA")
         isa_bal = st.number_input("Stocks & Shares ISA (£)", value=float(curr_data["isa_bal"]), step=5000.0)
@@ -918,17 +918,17 @@ lump_sums_list = [
     LumpSum(
         amount=active_p.get("lump_sum_1_amt", 0.0),
         injection_date=active_p.get("lump_sum_1_date", get_next_tax_year_start()),
-        target_pot=active_p.get("lump_sum_1_pot", "S&S ISA"),
+        target_pot="Private Pension" if active_p.get("lump_sum_1_pot") == "Workplace Pension" else active_p.get("lump_sum_1_pot", "S&S ISA"),
     ),
     LumpSum(
         amount=active_p.get("lump_sum_2_amt", 0.0),
         injection_date=active_p.get("lump_sum_2_date", get_next_tax_year_start()),
-        target_pot=active_p.get("lump_sum_2_pot", "S&S ISA"),
+        target_pot="Private Pension" if active_p.get("lump_sum_2_pot") == "Workplace Pension" else active_p.get("lump_sum_2_pot", "S&S ISA"),
     ),
     LumpSum(
         amount=active_p.get("lump_sum_3_amt", 0.0),
         injection_date=active_p.get("lump_sum_3_date", get_next_tax_year_start()),
-        target_pot=active_p.get("lump_sum_3_pot", "S&S ISA"),
+        target_pot="Private Pension" if active_p.get("lump_sum_3_pot") == "Workplace Pension" else active_p.get("lump_sum_3_pot", "S&S ISA"),
     ),
 ]
 
@@ -1029,7 +1029,7 @@ st.subheader("📊 Portfolio Trajectory & Drawdown Forecast")
 st.line_chart(
     active_df,
     x=x_col,
-    y=["sipp", "workplace_total", "isa", "other_investment", "total_portfolio"],
+    y=["sipp", "private_pension", "isa", "other_investment", "total_portfolio"],
 )
 
 st.subheader("📋 Balances and Drawdown Table (Up to Age 100)")
@@ -1038,7 +1038,7 @@ table_column_config = {
     "desired_monthly_income": st.column_config.NumberColumn("Desired Monthly Income", format="£%,d"),
     "desired_annual_income": st.column_config.NumberColumn("Desired Annual Income", format="£%,d"),
     "sipp": st.column_config.NumberColumn("SIPP", format="£%,d"),
-    "workplace_total": st.column_config.NumberColumn("Workplace Pension Total", format="£%,d"),
+    "private_pension": st.column_config.NumberColumn("Private Pension", format="£%,d"),
     "isa": st.column_config.NumberColumn("S&S ISA", format="£%,d"),
     "other_investment": st.column_config.NumberColumn("Other Investment", format="£%,d"),
     "total_portfolio": st.column_config.NumberColumn("Total Portfolio", format="£%,d"),
@@ -1073,15 +1073,15 @@ with col_notes1:
 
         2. **Market Stress Buffer Strategy (> 5% Crash Trigger):**
            * If a market crash of **> 5%** occurs (configurable at any age up to 100), the engine enters a **2-year recovery window**.
-           * During recovery, equity pots (**SIPP**, **Workplace Pension**, **ISA**) are protected from panic sell-offs.
+           * During recovery, equity pots (**SIPP**, **Private Pension**, **ISA**) are protected from panic sell-offs.
            * **Income Reduction Rule:** Your target monthly income is automatically reduced to match the **State Pension amount** calculated at the date of the crash.
            * **Post-Recovery:** After the 2-year window expires, your desired monthly income resumes at its full inflation-adjusted level.
 
         3. **Standard Tax-Optimized Drawdown Hierarchy:**
            When guaranteed income is insufficient, the required shortfall is satisfied using the following priority order:
-           * **Priority 1 (Personal Allowance Utilization):** Draws taxable pensions (**SIPP** and **75% Workplace Pension**) up to the remaining UK Personal Allowance threshold (**£12,570/year**) to receive income **100% tax-free**.
+           * **Priority 1 (Personal Allowance Utilization):** Draws taxable pensions (**SIPP** and **75% Private Pension**) up to the remaining UK Personal Allowance threshold (**£12,570/year**) to receive income **100% tax-free**.
            * **Priority 2 (Tax-Free ISA Capital):** Draws from **S&S ISA** to fulfill remaining income needs without incurring income tax.
-           * **Priority 3 (Tax-Free Pension Capital):** Draws from the tax-free portion (**25% Workplace Pension**).
+           * **Priority 3 (Tax-Free Pension Capital):** Draws from the tax-free portion (**25% Private Pension**).
            * **Priority 4 (Basic Rate Taxable Pensions):** Draws taxable pensions above the Personal Allowance, applying basic-rate income tax (**20%**) to calculate gross withdrawals.
            * **Priority 5 (Other Investments Fallback):** Draws remaining needs from non-registered/taxable investments.
         """)
