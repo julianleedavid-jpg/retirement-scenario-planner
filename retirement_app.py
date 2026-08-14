@@ -732,7 +732,6 @@ with st.sidebar.form(key=f"scenario_form_{selected_profile}"):
         ls3_pot = st.selectbox("Lump Sum 3 Target Pot", options=pot_options, index=pot_options.index(curr_data.get("lump_sum_3_pot", "S&S ISA")))
 
     # Section 3: COLLAPSED BY DEFAULT (expanded=False)
-    # Calculate max crash date (up to age 100)
     try:
         max_crash_date = date(dob.year + 100, dob.month, dob.day)
     except ValueError:
@@ -946,7 +945,7 @@ else:
 
 st.subheader(f"Showing Profile: **{selected_profile}**")
 
-# CSS snippet to reduce font size for top metrics
+# CSS snippet to reduce font size for top metrics and enable dataframe header wrapping
 st.markdown(
     """
     <style>
@@ -955,6 +954,11 @@ st.markdown(
     }
     [data-testid="stMetricLabel"] {
         font-size: 0.85rem !important;
+    }
+    [data-testid="stDataFrame"] div[role="columnheader"] {
+        white-space: normal !important;
+        word-wrap: break-word !important;
+        text-align: center !important;
     }
     </style>
     """,
@@ -980,22 +984,24 @@ st.line_chart(
 
 st.subheader("📋 Balances and Drawdown Table (Up to Age 100)")
 
+# Configure narrow columns matching figure widths and wrapping header titles
 table_column_config = {
-    "desired_monthly_income": st.column_config.NumberColumn("Desired Monthly Income", format="£%,d"),
-    "sipp": st.column_config.NumberColumn("SIPP", format="£%,d"),
-    "workplace_total": st.column_config.NumberColumn("Workplace Pension Total", format="£%,d"),
-    "isa": st.column_config.NumberColumn("S&S ISA", format="£%,d"),
-    "other_investment": st.column_config.NumberColumn("Other Investment", format="£%,d"),
-    "total_portfolio": st.column_config.NumberColumn("Total Portfolio", format="£%,d"),
-    "annuity_income": st.column_config.NumberColumn("Annuity Income", format="£%,d"),
-    "state_pension_income": st.column_config.NumberColumn("State Pension Income", format="£%,d"),
-    "pot_income_drawn": st.column_config.NumberColumn("Pot Income Drawn", format="£%,d"),
-    "monthly_net_income": st.column_config.NumberColumn("Monthly Net Income", format="£%,d"),
-    "annual_income": st.column_config.NumberColumn("Annual Income", format="£%,d"),
-    "tax_paid": st.column_config.NumberColumn("Tax Paid", format="£%,d"),
+    "desired_monthly_income": st.column_config.NumberColumn("Desired Monthly\nIncome", format="£%,d", width="small"),
+    "sipp": st.column_config.NumberColumn("SIPP", format="£%,d", width="small"),
+    "workplace_total": st.column_config.NumberColumn("Workplace Pension\nTotal", format="£%,d", width="small"),
+    "isa": st.column_config.NumberColumn("S&S ISA", format="£%,d", width="small"),
+    "other_investment": st.column_config.NumberColumn("Other\nInvestment", format="£%,d", width="small"),
+    "total_portfolio": st.column_config.NumberColumn("Total\nPortfolio", format="£%,d", width="small"),
+    "annuity_income": st.column_config.NumberColumn("Annuity\nIncome", format="£%,d", width="small"),
+    "state_pension_income": st.column_config.NumberColumn("State Pension\nIncome", format="£%,d", width="small"),
+    "pot_income_drawn": st.column_config.NumberColumn("Pot Income\nDrawn", format="£%,d", width="small"),
+    "monthly_net_income": st.column_config.NumberColumn("Monthly Net\nIncome", format="£%,d", width="small"),
+    "annual_income": st.column_config.NumberColumn("Annual\nIncome", format="£%,d", width="small"),
+    "tax_paid": st.column_config.NumberColumn("Tax\nPaid", format="£%,d", width="small"),
 }
 
-st.dataframe(active_df, column_config=table_column_config, height=1120, use_container_width=True)
+# setting use_container_width=False contracts table width tight to figures
+st.dataframe(active_df, column_config=table_column_config, height=1120, use_container_width=False)
 
 st.markdown("---")
 
