@@ -955,67 +955,22 @@ st.line_chart(
 
 st.subheader("📋 Balances and Drawdown Table (Up to Age 100)")
 
-# Custom CSS targeting native st.dataframe headers to enable multiline rendering
-st.markdown(
-    """
-    <style>
-    [data-testid="stDataFrame"] div[role="columnheader"] {
-        white-space: pre-wrap !important;
-        word-wrap: break-word !important;
-        line-height: 1.2 !important;
-        font-size: 11px !important;
-        text-align: center !important;
-    }
-    [data-testid="stDataFrame"] [data-role="grid-header"] {
-        max-height: 48px !important;
-        min-height: 48px !important;
-    }
-    </style>
-    """,
-    unsafe_allow_html=True,
-)
-
 table_column_config = {
-    "desired_monthly_income": st.column_config.NumberColumn(
-        "Desired Monthly\nIncome", format="£%,d", width="small"
-    ),
-    "sipp": st.column_config.NumberColumn("SIPP", format="£%,d", width="small"),
-    "workplace_total": st.column_config.NumberColumn(
-        "Workplace Pension\nTotal", format="£%,d", width="small"
-    ),
-    "isa": st.column_config.NumberColumn("S&S ISA", format="£%,d", width="small"),
-    "other_investment": st.column_config.NumberColumn(
-        "Other\nInvestment", format="£%,d", width="small"
-    ),
-    "total_portfolio": st.column_config.NumberColumn(
-        "Total\nPortfolio", format="£%,d", width="small"
-    ),
-    "annuity_income": st.column_config.NumberColumn(
-        "Annuity\nIncome", format="£%,d", width="small"
-    ),
-    "state_pension_income": st.column_config.NumberColumn(
-        "State Pension\nIncome", format="£%,d", width="small"
-    ),
-    "pot_income_drawn": st.column_config.NumberColumn(
-        "Pot Income\nDrawn", format="£%,d", width="small"
-    ),
-    "monthly_net_income": st.column_config.NumberColumn(
-        "Monthly Net\nIncome", format="£%,d", width="small"
-    ),
-    "annual_income": st.column_config.NumberColumn(
-        "Annual\nIncome", format="£%,d", width="small"
-    ),
-    "tax_paid": st.column_config.NumberColumn(
-        "Tax Paid", format="£%,d", width="small"
-    ),
+    "desired_monthly_income": st.column_config.NumberColumn("Desired Monthly Income", format="£%,d"),
+    "sipp": st.column_config.NumberColumn("SIPP", format="£%,d"),
+    "workplace_total": st.column_config.NumberColumn("Workplace Pension Total", format="£%,d"),
+    "isa": st.column_config.NumberColumn("S&S ISA", format="£%,d"),
+    "other_investment": st.column_config.NumberColumn("Other Investment", format="£%,d"),
+    "total_portfolio": st.column_config.NumberColumn("Total Portfolio", format="£%,d"),
+    "annuity_income": st.column_config.NumberColumn("Annuity Income", format="£%,d"),
+    "state_pension_income": st.column_config.NumberColumn("State Pension Income", format="£%,d"),
+    "pot_income_drawn": st.column_config.NumberColumn("Pot Income Drawn", format="£%,d"),
+    "monthly_net_income": st.column_config.NumberColumn("Monthly Net Income", format="£%,d"),
+    "annual_income": st.column_config.NumberColumn("Annual Income", format="£%,d"),
+    "tax_paid": st.column_config.NumberColumn("Tax Paid", format="£%,d"),
 }
 
-st.dataframe(
-    active_df,
-    column_config=table_column_config,
-    height=1120,
-    use_container_width=True,
-)
+st.dataframe(active_df, column_config=table_column_config, height=1120, use_container_width=True)
 
 st.markdown("---")
 
