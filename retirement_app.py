@@ -62,7 +62,7 @@ DEFAULT_PROFILES = {
         "monthly_inc": 2500.0,
         "increased_monthly_inc": 0.0,
         "increase_date": get_next_tax_year_start(),
-        "reduced_monthly_inc": 1875.0,
+        "reduced_monthly_inc": 1875.0, # 75% of 2500
         "reduced_inc_age": 80,
         "inflation_rate": 3.0,
         "sipp_bal": 52500.0,
@@ -105,7 +105,7 @@ DEFAULT_PROFILES = {
         "monthly_inc": 2500.0,
         "increased_monthly_inc": 0.0,
         "increase_date": get_next_tax_year_start(),
-        "reduced_monthly_inc": 1875.0,
+        "reduced_monthly_inc": 1875.0, # 75% of 2500
         "reduced_inc_age": 80,
         "inflation_rate": 3.0,
         "sipp_bal": 0.0,
@@ -765,8 +765,9 @@ with st.sidebar.form(key=f"scenario_form_{selected_profile}"):
         reduced_monthly_inc = st.number_input(
             "Reduce Income To (£)",
             min_value=0.0,
-            value=float(curr_data.get("reduced_monthly_inc", curr_data["monthly_inc"] * 0.75)),
+            value=float(curr_data.get("reduced_monthly_inc", monthly_inc * 0.75)),
             step=50.0,
+            help="Defaults automatically to 75% of Desired Monthly Income.",
         )
         reduced_inc_age = st.number_input(
             "Reduced Income Age",
