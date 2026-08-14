@@ -641,7 +641,6 @@ st.sidebar.markdown("---")
 with st.sidebar.form(key=f"scenario_form_{selected_profile}"):
     st.header(f"⚙️ Edit '{selected_profile}'")
 
-    # Explicit unique key parameters fix StreamlitDuplicateElementKey error
     submit_top = st.form_submit_button(
         label="🔄 Recalculate Forecast", use_container_width=True, key="recalc_top"
     )
@@ -910,23 +909,40 @@ current_age = (
     - ((today.month, today.day) < (active_p["dob"].month, active_p["dob"].day))
 )
 
-# Calculate age where total portfolio reaches 0 post-retirement
+# Calculate age where total portfolio reaches 0 post-retirement or final balance at 100
 retired_df = active_df[active_df["is_retired"]]
 depleted_rows = retired_df[retired_df["total_portfolio"] <= 0]
 
 if not depleted_rows.empty:
-    depleted_age_str = f"Age {int(depleted_rows.iloc[0]['age'])}"
+    depleted_val_str = f"Age {int(depleted_rows.iloc[0]['age'])}"
 else:
-    depleted_age_str = "100+ (Sustained)"
+    final_bal = int(round(active_df.iloc[-1]["total_portfolio"]))
+    depleted_val_str = f"£{final_bal:,}"
 
 st.subheader(f"Showing Profile: **{selected_profile}**")
+
+# CSS snippet to reduce font size for top metrics
+st.markdown(
+    """
+    <style>
+    [data-testid="stMetricValue"] {
+        font-size: 1.2rem !important;
+    }
+    [data-testid="stMetricLabel"] {
+        font-size: 0.85rem !important;
+    }
+    </style>
+    """,
+    unsafe_allow_html=True,
+)
+
 col1, col2, col3, col4, col5, col6 = st.columns(6)
 col1.metric("Current Age", f"{current_age}")
 col2.metric("Target Retirement Age", f"{int(active_p['ret_age'])}")
 col3.metric("Peak Portfolio Value", f"£{int(round(active_df['total_portfolio'].max())):,}")
 col4.metric("Desired Monthly Income", f"£{int(round(active_p['monthly_inc'])):,}")
 col5.metric("Desired Annual Income", f"£{annual_inc:,}")
-col6.metric("Portfolio Depleted Age", depleted_age_str)
+col6.metric("Portfolio Depleted / Age 100", depleted_val_str)
 
 st.markdown("---")
 
