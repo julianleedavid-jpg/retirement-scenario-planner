@@ -905,13 +905,23 @@ current_age = (
     - ((today.month, today.day) < (active_p["dob"].month, active_p["dob"].day))
 )
 
+# Calculate age where total portfolio reaches 0 post-retirement
+retired_df = active_df[active_df["is_retired"]]
+depleted_rows = retired_df[retired_df["total_portfolio"] <= 0]
+
+if not depleted_rows.empty:
+    depleted_age_str = f"Age {int(depleted_rows.iloc[0]['age'])}"
+else:
+    depleted_age_str = "100+ (Sustained)"
+
 st.subheader(f"Showing Profile: **{selected_profile}**")
-col1, col2, col3, col4, col5 = st.columns(5)
+col1, col2, col3, col4, col5, col6 = st.columns(6)
 col1.metric("Current Age", f"{current_age}")
 col2.metric("Target Retirement Age", f"{int(active_p['ret_age'])}")
 col3.metric("Peak Portfolio Value", f"£{int(round(active_df['total_portfolio'].max())):,}")
 col4.metric("Desired Monthly Income", f"£{int(round(active_p['monthly_inc'])):,}")
 col5.metric("Desired Annual Income", f"£{annual_inc:,}")
+col6.metric("Portfolio Depleted Age", depleted_age_str)
 
 st.markdown("---")
 
