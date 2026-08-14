@@ -579,6 +579,7 @@ class RetirementEngine:
                 "age": age,
                 "is_retired": is_retired,
                 "desired_monthly_income": int(round(inflated_monthly_income)),
+                "desired_annual_income": int(round(inflated_monthly_income * 12.0)),
                 "sipp": int(round(sipp)),
                 "workplace_total": int(round(workplace_total_val)),
                 "workplace_tax_free": int(round(wp_tax_free)),
@@ -606,6 +607,7 @@ class RetirementEngine:
                 "age": "last",
                 "is_retired": "last",
                 "desired_monthly_income": "last",
+                "desired_annual_income": "last",
                 "sipp": "last",
                 "workplace_total": "last",
                 "isa": "last",
@@ -619,7 +621,6 @@ class RetirementEngine:
             })
             .reset_index()
         )
-        monthly_df["annual_income"] = monthly_df["monthly_net_income"] * 12
 
         # Tax Year Snapshot Aggregation
         tax_year_df = (
@@ -629,6 +630,7 @@ class RetirementEngine:
                 "age": "last",
                 "is_retired": "last",
                 "desired_monthly_income": "last",
+                "desired_annual_income": "last",
                 "sipp": "last",
                 "workplace_total": "last",
                 "isa": "last",
@@ -642,11 +644,11 @@ class RetirementEngine:
             })
             .reset_index()
         )
-        tax_year_df["annual_income"] = tax_year_df["monthly_net_income"]
-        tax_year_df["monthly_net_income"] = (tax_year_df["annual_income"] / 12.0).round(0)
+        tax_year_df["monthly_net_income"] = (tax_year_df["monthly_net_income"] / 12.0).round(0)
 
         num_cols = [
             "desired_monthly_income",
+            "desired_annual_income",
             "sipp",
             "workplace_total",
             "isa",
@@ -656,7 +658,6 @@ class RetirementEngine:
             "state_pension_income",
             "pot_income_drawn",
             "monthly_net_income",
-            "annual_income",
             "tax_paid",
         ]
         monthly_df[num_cols] = monthly_df[num_cols].round(0).astype(int)
@@ -1035,6 +1036,7 @@ st.subheader("📋 Balances and Drawdown Table (Up to Age 100)")
 
 table_column_config = {
     "desired_monthly_income": st.column_config.NumberColumn("Desired Monthly Income", format="£%,d"),
+    "desired_annual_income": st.column_config.NumberColumn("Desired Annual Income", format="£%,d"),
     "sipp": st.column_config.NumberColumn("SIPP", format="£%,d"),
     "workplace_total": st.column_config.NumberColumn("Workplace Pension Total", format="£%,d"),
     "isa": st.column_config.NumberColumn("S&S ISA", format="£%,d"),
@@ -1044,7 +1046,6 @@ table_column_config = {
     "state_pension_income": st.column_config.NumberColumn("State Pension Income", format="£%,d"),
     "pot_income_drawn": st.column_config.NumberColumn("Pot Income Drawn", format="£%,d"),
     "monthly_net_income": st.column_config.NumberColumn("Monthly Net Income", format="£%,d"),
-    "annual_income": st.column_config.NumberColumn("Annual Income", format="£%,d"),
     "tax_paid": st.column_config.NumberColumn("Tax Paid", format="£%,d"),
 }
 
