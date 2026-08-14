@@ -320,7 +320,7 @@ class RetirementEngine:
         crash_capped_income = None
         lump_sums_applied = [False] * len(self.scenario.lump_sums)
 
-        # Pre-calculate base starting annuity at Annuity Start Date if inflation toggle is checked
+        # Pre-calculate base starting annuity at Start Date if inflation toggle is checked
         base_annuity = self.scenario.annuity_annual
         if self.scenario.inflate_annuity_to_start and self.scenario.annuity_start_date > start_date:
             years_to_start = (self.scenario.annuity_start_date - start_date).days / 365.25
@@ -434,7 +434,7 @@ class RetirementEngine:
 
             monthly_drawn_from_pots = 0.0
             state_pension_monthly = 0.0
-            annuity_monthly = 0.0
+            wp_pension_guaranteed_monthly = 0.0
             tax_paid = 0.0
 
             years_since_start = current_date.year - start_date.year - (
@@ -477,8 +477,8 @@ class RetirementEngine:
                     inflated_annuity_annual = base_annuity * (
                         (1.0 + self.scenario.inflation_rate) ** max(0, years_since_annuity)
                     )
-                    annuity_monthly = inflated_annuity_annual / 12.0
-                    taxable_income_this_tax_year += annuity_monthly
+                    wp_pension_guaranteed_monthly = inflated_annuity_annual / 12.0
+                    taxable_income_this_tax_year += wp_pension_guaranteed_monthly
 
                 if (
                     self.scenario.has_state_pension
@@ -490,7 +490,7 @@ class RetirementEngine:
                     state_pension_monthly = inflated_state_pension_annual / 12.0
                     taxable_income_this_tax_year += state_pension_monthly
 
-                guaranteed_monthly_income = annuity_monthly + state_pension_monthly
+                guaranteed_monthly_income = wp_pension_guaranteed_monthly + state_pension_monthly
 
                 if guaranteed_monthly_income > inflated_monthly_income:
                     excess_income = guaranteed_monthly_income - inflated_monthly_income
@@ -568,7 +568,7 @@ class RetirementEngine:
                         monthly_drawn_from_pots += draw
 
             total_portfolio = sipp + wp_taxable + wp_tax_free + isa + other
-            total_monthly_income = monthly_drawn_from_pots + state_pension_monthly + annuity_monthly
+            total_monthly_income = monthly_drawn_from_pots + state_pension_monthly + wp_pension_guaranteed_monthly
 
             daily_records.append({
                 "date": current_date,
@@ -583,7 +583,7 @@ class RetirementEngine:
                 "isa": int(round(isa)),
                 "other_investment": int(round(other)),
                 "total_portfolio": int(round(total_portfolio)),
-                "annuity_income": int(round(annuity_monthly)),
+                "workplace_pension_income": int(round(wp_pension_guaranteed_monthly)),
                 "state_pension_income": int(round(state_pension_monthly)),
                 "pot_income_drawn": int(round(monthly_drawn_from_pots)),
                 "monthly_net_income": int(round(total_monthly_income)),
@@ -608,7 +608,7 @@ class RetirementEngine:
                 "isa": "last",
                 "other_investment": "last",
                 "total_portfolio": "last",
-                "annuity_income": "sum",
+                "workplace_pension_income": "sum",
                 "state_pension_income": "sum",
                 "pot_income_drawn": "sum",
                 "monthly_net_income": "sum",
@@ -631,7 +631,7 @@ class RetirementEngine:
                 "isa": "last",
                 "other_investment": "last",
                 "total_portfolio": "last",
-                "annuity_income": "sum",
+                "workplace_pension_income": "sum",
                 "state_pension_income": "sum",
                 "pot_income_drawn": "sum",
                 "monthly_net_income": "sum",
@@ -649,7 +649,7 @@ class RetirementEngine:
             "isa",
             "other_investment",
             "total_portfolio",
-            "annuity_income",
+            "workplace_pension_income",
             "state_pension_income",
             "pot_income_drawn",
             "monthly_net_income",
@@ -1037,7 +1037,7 @@ table_column_config = {
     "isa": st.column_config.NumberColumn("S&S ISA", format="£%,d"),
     "other_investment": st.column_config.NumberColumn("Other Investment", format="£%,d"),
     "total_portfolio": st.column_config.NumberColumn("Total Portfolio", format="£%,d"),
-    "annuity_income": st.column_config.NumberColumn("Annuity Income", format="£%,d"),
+    "workplace_pension_income": st.column_config.NumberColumn("Workplace Pension Income", format="£%,d"),
     "state_pension_income": st.column_config.NumberColumn("State Pension Income", format="£%,d"),
     "pot_income_drawn": st.column_config.NumberColumn("Pot Income Drawn", format="£%,d"),
     "monthly_net_income": st.column_config.NumberColumn("Monthly Net Income", format="£%,d"),
@@ -1063,7 +1063,7 @@ with col_notes1:
         This engine applies strict, tax-efficient drawdown rules in a defined sequence on the 1st of every month:
 
         1. **Guaranteed Income First (Annuity & State Pension):**
-           * **Annuities:** Annual pension annuity payments are applied first and increase with inflation after Year 1.
+           * **Annuities / DB Pension:** Annual workplace pension payouts are applied first and increase with inflation after Year 1.
            * **State Pension:** Applied automatically once you reach your configured State Pension age, escalating annually by your growth input.
            * **Excess Income Recycling:** If guaranteed income exceeds your target inflation-adjusted monthly income, the surplus is automatically deposited into your **S&S ISA** (up to the **£20,000/year** limit), with any remaining excess directed to **Other Investments**.
 
