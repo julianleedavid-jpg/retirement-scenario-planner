@@ -84,6 +84,7 @@ DEFAULT_PROFILES = {
         "annuity_annual": 0.0,
         "annuity_cost": 0.0,
         "annuity_start_date": date(2031, 12, 1),
+        "inflate_annuity_to_start": False,
         "lump_sum_1_amt": 0.0,
         "lump_sum_1_date": get_next_tax_year_start(),
         "lump_sum_1_pot": "S&S ISA",
@@ -123,8 +124,9 @@ DEFAULT_PROFILES = {
         "state_pension_amount": 12548.0,
         "state_pension_growth": 2.5,
         "annuity_annual": 15929.0,  # Accrued RCPS Nuvos DB Pension as of 2025
-        "annuity_cost": 0.0,        # DB Defined Benefit scheme (no capital purchase needed)
+        "annuity_cost": 0.0,
         "annuity_start_date": date(2045, 10, 15), # Nuvos Normal Pension Age (65)
+        "inflate_annuity_to_start": False,
         "lump_sum_1_amt": 0.0,
         "lump_sum_1_date": get_next_tax_year_start(),
         "lump_sum_1_pot": "S&S ISA",
@@ -230,6 +232,7 @@ class Scenario:
     annuity_annual: float = 0.0
     annuity_cost: float = 0.0
     annuity_start_date: date = field(default_factory=get_next_tax_year_start)
+    inflate_annuity_to_start: bool = False
     increased_monthly_inc: float = 0.0
     increase_date: date = field(default_factory=get_next_tax_year_start)
     reduced_monthly_inc: float = 1875.0
@@ -316,6 +319,12 @@ class RetirementEngine:
         crash_active_until = None
         crash_capped_income = None
         lump_sums_applied = [False] * len(self.scenario.lump_sums)
+
+        # Pre-calculate base starting annuity at Annuity Start Date if inflation toggle is checked
+        base_annuity = self.scenario.annuity_annual
+        if self.scenario.inflate_annuity_to_start and self.scenario.annuity_start_date > start_date:
+            years_to_start = (self.scenario.annuity_start_date - start_date).days / 365.25
+            base_annuity *= ((1.0 + self.scenario.inflation_rate) ** max(0.0, years_to_start))
 
         while current_date <= target_100_date:
             age = self._calculate_age(self.dob, current_date)
@@ -458,14 +467,14 @@ class RetirementEngine:
             # Post-Retirement Drawdown Execution
             if is_retired and current_date.day == 1:
                 if (
-                    self.scenario.annuity_annual > 0
+                    base_annuity > 0
                     and current_date >= self.scenario.annuity_start_date
                 ):
                     annuity_start = self.scenario.annuity_start_date
                     years_since_annuity = current_date.year - annuity_start.year - (
                         (current_date.month, current_date.day) < (annuity_start.month, annuity_start.day)
                     )
-                    inflated_annuity_annual = self.scenario.annuity_annual * (
+                    inflated_annuity_annual = base_annuity * (
                         (1.0 + self.scenario.inflation_rate) ** max(0, years_since_annuity)
                     )
                     annuity_monthly = inflated_annuity_annual / 12.0
@@ -803,6 +812,11 @@ with st.sidebar.form(key=f"scenario_form_{selected_profile}"):
             min_value=date.today(),
             format="DD/MM/YYYY",
         )
+        inflate_annuity_to_start = st.checkbox(
+            "Inflate Pension/Annuity to Start Date",
+            value=curr_data.get("inflate_annuity_to_start", False),
+            help="Check this if the entered annual figure is in today's money. It will grow by inflation until the start date before payments begin.",
+        )
 
     with st.expander("🏛️ State Pension", expanded=False):
         has_state_pension = st.checkbox("Include State Pension", value=curr_data.get("has_state_pension", True))
@@ -866,6 +880,7 @@ with st.sidebar.form(key=f"scenario_form_{selected_profile}"):
             "annuity_annual": annuity_annual,
             "annuity_cost": annuity_cost,
             "annuity_start_date": annuity_start_date,
+            "inflate_annuity_to_start": inflate_annuity_to_start,
             "sipp_bal": sipp_bal,
             "sipp_ret": sipp_ret,
             "sipp_contrib": sipp_contrib,
@@ -942,6 +957,7 @@ scenario_obj = Scenario(
     annuity_annual=active_p.get("annuity_annual", 0.0),
     annuity_cost=active_p.get("annuity_cost", 0.0),
     annuity_start_date=active_p.get("annuity_start_date", date(2031, 12, 1)),
+    inflate_annuity_to_start=active_p.get("inflate_annuity_to_start", False),
     increased_monthly_inc=active_p.get("increased_monthly_inc", 0.0),
     increase_date=active_p.get("increase_date", get_next_tax_year_start()),
     reduced_monthly_inc=active_p.get("reduced_monthly_inc", active_p["monthly_inc"] * 0.75),
