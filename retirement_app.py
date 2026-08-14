@@ -336,6 +336,17 @@ class RetirementEngine:
                 isa_credited_this_tax_year = 0.0
                 last_tax_year = current_tax_year
 
+            # Evaluate active annual annuity amount every day once start date reached
+            current_annual_annuity = 0.0
+            if current_date >= self.scenario.annuity_start_date and base_annuity > 0:
+                annuity_start = self.scenario.annuity_start_date
+                years_since_annuity = current_date.year - annuity_start.year - (
+                    (current_date.month, current_date.day) < (annuity_start.month, annuity_start.day)
+                )
+                current_annual_annuity = base_annuity * (
+                    (1.0 + self.scenario.inflation_rate) ** max(0, years_since_annuity)
+                )
+
             # Apply Lump Sum Injections
             for idx, ls in enumerate(self.scenario.lump_sums):
                 if not lump_sums_applied[idx] and ls.amount > 0 and current_date >= ls.injection_date:
@@ -466,18 +477,8 @@ class RetirementEngine:
 
             # Post-Retirement Drawdown Execution
             if is_retired and current_date.day == 1:
-                if (
-                    base_annuity > 0
-                    and current_date >= self.scenario.annuity_start_date
-                ):
-                    annuity_start = self.scenario.annuity_start_date
-                    years_since_annuity = current_date.year - annuity_start.year - (
-                        (current_date.month, current_date.day) < (annuity_start.month, annuity_start.day)
-                    )
-                    inflated_annuity_annual = base_annuity * (
-                        (1.0 + self.scenario.inflation_rate) ** max(0, years_since_annuity)
-                    )
-                    annuity_monthly = inflated_annuity_annual / 12.0
+                if current_annual_annuity > 0:
+                    annuity_monthly = current_annual_annuity / 12.0
                     taxable_income_this_tax_year += annuity_monthly
 
                 if (
@@ -567,10 +568,10 @@ class RetirementEngine:
                         needed_net -= draw
                         monthly_drawn_from_pots += draw
 
-            # Workplace Pension Total combines DC pot balances + active Annuity Income (annualised)
-            workplace_total_val = wp_taxable + wp_tax_free + (annuity_monthly * 12.0 if annuity_monthly > 0 else 0.0)
+            # Workplace Pension Total incorporates DC pot balances + annualised Annuity Value
+            workplace_total_val = wp_taxable + wp_tax_free + current_annual_annuity
             total_portfolio = sipp + wp_taxable + wp_tax_free + isa + other
-            total_monthly_income = monthly_drawn_from_pots + state_pension_monthly + annuity_monthly
+            total_monthly_income = monthly_drawn_from_pots + state_pension_monthly + (current_annual_annuity / 12.0 if is_retired else 0.0)
 
             daily_records.append({
                 "date": current_date,
@@ -585,7 +586,7 @@ class RetirementEngine:
                 "isa": int(round(isa)),
                 "other_investment": int(round(other)),
                 "total_portfolio": int(round(total_portfolio)),
-                "annuity_income": int(round(annuity_monthly)),
+                "annuity_income": int(round(current_annual_annuity / 12.0 if is_retired else 0.0)),
                 "state_pension_income": int(round(state_pension_monthly)),
                 "pot_income_drawn": int(round(monthly_drawn_from_pots)),
                 "monthly_net_income": int(round(total_monthly_income)),
@@ -610,7 +611,7 @@ class RetirementEngine:
                 "isa": "last",
                 "other_investment": "last",
                 "total_portfolio": "last",
-                "annuity_income": "sum",
+                "annuity_income": "last",
                 "state_pension_income": "sum",
                 "pot_income_drawn": "sum",
                 "monthly_net_income": "sum",
@@ -633,7 +634,7 @@ class RetirementEngine:
                 "isa": "last",
                 "other_investment": "last",
                 "total_portfolio": "last",
-                "annuity_income": "sum",
+                "annuity_income": "last",
                 "state_pension_income": "sum",
                 "pot_income_drawn": "sum",
                 "monthly_net_income": "sum",
