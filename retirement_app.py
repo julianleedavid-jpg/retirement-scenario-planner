@@ -980,9 +980,9 @@ st.line_chart(
 st.subheader("📋 Balances and Drawdown Table (Up to Age 100)")
 
 table_column_config = {
-    "desired_monthly_income": st.column_config.NumberColumn("Desired Monthly Income", format="£%,d"),
+    "desired_monthly_income": st.column_config.NumberColumn("Desired Monthly\nIncome", format="£%,d"),
     "sipp": st.column_config.NumberColumn("SIPP", format="£%,d"),
-    "workplace_total": st.column_config.NumberColumn("Workplace Pension Total", format="£%,d"),
+    "workplace_total": st.column_config.NumberColumn("Workplace Pension\nTotal", format="£%,d"),
     "isa": st.column_config.NumberColumn("S&S ISA", format="£%,d"),
     "other_investment": st.column_config.NumberColumn("Other Investment", format="£%,d"),
     "total_portfolio": st.column_config.NumberColumn("Total Portfolio", format="£%,d"),
