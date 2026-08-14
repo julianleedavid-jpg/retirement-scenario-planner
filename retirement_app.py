@@ -641,6 +641,11 @@ st.sidebar.markdown("---")
 with st.sidebar.form(key=f"scenario_form_{selected_profile}"):
     st.header(f"⚙️ Edit '{selected_profile}'")
 
+    # Additional submit button above edit input fields
+    submit_top = st.form_submit_button(
+        label="🔄 Recalculate Forecast", use_container_width=True
+    )
+
     dob = st.date_input(
         "Date of Birth",
         value=curr_data["dob"],
@@ -773,11 +778,11 @@ with st.sidebar.form(key=f"scenario_form_{selected_profile}"):
         index=0 if curr_data["view_mode"] == "Tax Year" else 1,
     )
 
-    submit_button = st.form_submit_button(
+    submit_bottom = st.form_submit_button(
         label="🔄 Recalculate Forecast", use_container_width=True
     )
 
-    if submit_button:
+    if submit_top or submit_bottom:
         st.session_state.scenarios[selected_profile] = {
             "dob": dob,
             "ret_age": ret_age,
