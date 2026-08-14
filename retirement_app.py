@@ -944,25 +944,54 @@ st.dataframe(active_df, column_config=table_column_config, height=1120, use_cont
 st.markdown("---")
 
 # ----------------------------------------------------------------------
-# 6. Historical Market Crash & Recovery Notes
+# 6. Reference Notes & Drawdown Engine Logic
 # ----------------------------------------------------------------------
 
-with st.expander("📚 Historical Market Crash & Recovery Reference Data"):
-    st.markdown("""
-    ### Top 10 Global Market Crashes & Recovery Timelines
-    
-    | # | Event & Timeline | S&P 500 Decline (%) | S&P 500 Recovery Time | FTSE 100 Decline (%) | FTSE 100 Recovery Time | Primary Driver |
-    |---|---|---|---|---|---|---|
-    | **1** | **Wall Street Crash** *(1929–1932)* | **-86.2%** | **~25.2 years** *(Nov 1954)* | **N/A** *(FT Ord: ~24 yrs)* | **N/A** | Speculative equity bubble, margin leverage, banking panics |
-    | **2** | **OPEC Oil Shock** *(1973–1974)* | **-48.2%** | **~7.5 years** *(Jul 1980)* | **N/A** *(FT Ord: ~3.5 yrs)* | **N/A** | Arab oil embargo, high inflation, Bretton Woods collapse |
-    | **3** | **Black Monday** *(1987)* | **-33.5%** | **~1.8 years** *(Jul 1989)* | **-36.8%** | **~2.1 years** *(Nov 1989)* | Automated program trading, valuation concerns |
-    | **4** | **Gulf War Crash** *(1990)* | **-19.9%** | **~6 months** *(Feb 1991)* | **-21.8%** | **~7 months** *(Feb 1991)* | Iraqi invasion of Kuwait, oil price spike, US recession |
-    | **5** | **Russian Debt & LTCM** *(1998)* | **-19.3%** | **~3 months** *(Nov 1998)* | **-21.7%** | **~6 months** *(Feb 1999)* | Russian sovereign debt default, LTCM hedge fund collapse |
-    | **6** | **Dot-Com Bubble Burst** *(2000–2003)* | **-49.1%** | **~7.2 years** *(May 2007)* | **-52.6%** | **~7.8 years** *(Nov 2007)* | Tech overvaluation, corporate accounting scandals |
-    | **7** | **Global Financial Crisis** *(2007–2009)* | **-56.8%** | **~5.5 years** *(Mar 2013)* | **-48.3%** | **~7.3 years** *(Feb 2015)* | Subprime mortgage collapse, Lehman Brothers collapse |
-    | **8** | **European Debt Crisis** *(2011)* | **-19.4%** | **~6 months** *(Feb 2012)* | **-20.2%** | **~1.5 years** *(Feb 2013)* | Eurozone debt fears (Greece/Italy), US credit downgrade |
-    | **9** | **COVID-19 Pandemic** *(2020)* | **-33.9%** | **~5 months** *(Aug 2020)* | **-34.8%** | **~2.8 years** *(Jan 2023)* | Global lockdowns, economic shutdown, pandemic uncertainty |
-    | **10** | **Inflation & Rate Hikes** *(2022)* | **-25.4%** | **~2.2 years** *(Jan 2024)* | **-10.3%** | **~4 months** *(Feb 2023)* | Post-pandemic inflation spike, aggressive rate hikes |
-    
-    *Note: The FTSE 100 was introduced on January 3, 1984. Recovery times reflect nominal market price returns reaching previous peaks.*
-    """)
+col_notes1, col_notes2 = st.columns(2)
+
+with col_notes1:
+    with st.expander("📖 Drawdown Priorities & Engine Logic Notes"):
+        st.markdown("""
+        ### Post-Retirement Drawdown Priorities & Rules
+
+        This engine applies strict, tax-efficient drawdown rules in a defined sequence on the 1st of every month:
+
+        1. **Guaranteed Income First (Annuity & State Pension):**
+           * **Annuities:** Annual pension annuity payments are applied first and increase with inflation after Year 1.
+           * **State Pension:** Applied automatically once you reach your configured State Pension age, escalating annually by your growth input.
+           * **Excess Income Recycling:** If guaranteed income exceeds your target inflation-adjusted monthly income, the surplus is automatically deposited into your **S&S ISA** (up to the **£20,000/year** limit), with any remaining excess directed to **Other Investments**.
+
+        2. **Market Stress Buffer Strategy (Crash Active):**
+           * If a market crash occurs, the engine enters a **2-year recovery window**.
+           * During recovery, equity pots (**SIPP**, **Workplace Pension**, **ISA**) are frozen to avoid selling down depressed assets. 
+           * All required income is drawn exclusively from **Other Investments** (cash/bonds).
+
+        3. **Standard Tax-Optimized Drawdown Hierarchy:**
+           When guaranteed income is insufficient, the required shortfall is satisfied using the following priority order:
+           * **Priority 1 (Personal Allowance Utilization):** Draws taxable pensions (**SIPP** and **75% Workplace Pension**) up to the remaining UK Personal Allowance threshold (**£12,570/year**) to receive income **100% tax-free**.
+           * **Priority 2 (Tax-Free ISA Capital):** Draws from **S&S ISA** to fulfill remaining income needs without incurring income tax.
+           * **Priority 3 (Tax-Free Pension Capital):** Draws from the tax-free portion (**25% Workplace Pension**).
+           * **Priority 4 (Basic Rate Taxable Pensions):** Draws taxable pensions above the Personal Allowance, applying basic-rate income tax (**20%**) to calculate gross withdrawals.
+           * **Priority 5 (Other Investments Fallback):** Draws remaining needs from non-registered/taxable investments.
+        """)
+
+with col_notes2:
+    with st.expander("📚 Historical Market Crash & Recovery Reference Data"):
+        st.markdown("""
+        ### Top 10 Global Market Crashes & Recovery Timelines
+        
+        | # | Event & Timeline | S&P 500 Decline (%) | S&P 500 Recovery Time | FTSE 100 Decline (%) | FTSE 100 Recovery Time | Primary Driver |
+        |---|---|---|---|---|---|---|
+        | **1** | **Wall Street Crash** *(1929–1932)* | **-86.2%** | **~25.2 years** *(Nov 1954)* | **N/A** *(FT Ord: ~24 yrs)* | **N/A** | Speculative equity bubble, margin leverage, banking panics |
+        | **2** | **OPEC Oil Shock** *(1973–1974)* | **-48.2%** | **~7.5 years** *(Jul 1980)* | **N/A** *(FT Ord: ~3.5 yrs)* | **N/A** | Arab oil embargo, high inflation, Bretton Woods collapse |
+        | **3** | **Black Monday** *(1987)* | **-33.5%** | **~1.8 years** *(Jul 1989)* | **-36.8%** | **~2.1 years** *(Nov 1989)* | Automated program trading, valuation concerns |
+        | **4** | **Gulf War Crash** *(1990)* | **-19.9%** | **~6 months** *(Feb 1991)* | **-21.8%** | **~7 months** *(Feb 1991)* | Iraqi invasion of Kuwait, oil price spike, US recession |
+        | **5** | **Russian Debt & LTCM** *(1998)* | **-19.3%** | **~3 months** *(Nov 1998)* | **-21.7%** | **~6 months** *(Feb 1999)* | Russian sovereign debt default, LTCM hedge fund collapse |
+        | **6** | **Dot-Com Bubble Burst** *(2000–2003)* | **-49.1%** | **~7.2 years** *(May 2007)* | **-52.6%** | **~7.8 years** *(Nov 2007)* | Tech overvaluation, corporate accounting scandals |
+        | **7** | **Global Financial Crisis** *(2007–2009)* | **-56.8%** | **~5.5 years** *(Mar 2013)* | **-48.3%** | **~7.3 years** *(Feb 2015)* | Subprime mortgage collapse, Lehman Brothers collapse |
+        | **8** | **European Debt Crisis** *(2011)* | **-19.4%** | **~6 months** *(Feb 2012)* | **-20.2%** | **~1.5 years** *(Feb 2013)* | Eurozone debt fears (Greece/Italy), US credit downgrade |
+        | **9** | **COVID-19 Pandemic** *(2020)* | **-33.9%** | **~5 months** *(Aug 2020)* | **-34.8%** | **~2.8 years** *(Jan 2023)* | Global lockdowns, economic shutdown, pandemic uncertainty |
+        | **10** | **Inflation & Rate Hikes** *(2022)* | **-25.4%** | **~2.2 years** *(Jan 2024)* | **-10.3%** | **~4 months** *(Feb 2023)* | Post-pandemic inflation spike, aggressive rate hikes |
+        
+        *Note: The FTSE 100 was introduced on January 3, 1984. Recovery times reflect nominal market price returns reaching previous peaks.*
+        """)
