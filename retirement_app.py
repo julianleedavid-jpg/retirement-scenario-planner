@@ -645,137 +645,139 @@ with st.sidebar.form(key=f"scenario_form_{selected_profile}"):
         label="🔄 Recalculate Forecast", use_container_width=True, key="recalc_top"
     )
 
-    dob = st.date_input(
-        "Date of Birth",
-        value=curr_data["dob"],
-        min_value=date(1920, 1, 1),
-        max_value=date.today(),
-        format="DD/MM/YYYY",
-    )
-    ret_age = st.number_input(
-        "Target Retirement Age", min_value=50, max_value=85, value=int(curr_data["ret_age"])
-    )
-    monthly_inc = st.number_input(
-        "Desired Monthly Income (£)",
-        min_value=100.0,
-        value=float(curr_data["monthly_inc"]),
-        step=100.0,
-    )
-    increased_monthly_inc = st.number_input(
-        "Increase Income To (£)",
-        min_value=0.0,
-        value=float(curr_data.get("increased_monthly_inc", 0.0)),
-        step=100.0,
-        help="Set above £0 to step up monthly income from Increase Date onwards.",
-    )
-    increase_date = st.date_input(
-        "Increase Date",
-        value=curr_data.get("increase_date", get_next_tax_year_start()),
-        min_value=date.today(),
-        format="DD/MM/YYYY",
-    )
-    reduced_monthly_inc = st.number_input(
-        "Reduce Income To (£)",
-        min_value=0.0,
-        value=float(curr_data.get("reduced_monthly_inc", curr_data["monthly_inc"] * 0.75)),
-        step=50.0,
-    )
-    reduced_inc_age = st.number_input(
-        "Reduced Income Age",
-        min_value=50,
-        max_value=100,
-        value=int(curr_data.get("reduced_inc_age", 80)),
-    )
-    inflation_rate = st.slider(
-        "Annual Inflation Rate (%)",
-        min_value=0.0,
-        max_value=10.0,
-        value=float(curr_data.get("inflation_rate", 3.0)),
-        step=0.1,
-    )
+    # Section 1: UNCOLLAPSED BY DEFAULT (expanded=True)
+    with st.expander("👤 Core Profile & Income Goals", expanded=True):
+        dob = st.date_input(
+            "Date of Birth",
+            value=curr_data["dob"],
+            min_value=date(1920, 1, 1),
+            max_value=date.today(),
+            format="DD/MM/YYYY",
+        )
+        ret_age = st.number_input(
+            "Target Retirement Age", min_value=50, max_value=85, value=int(curr_data["ret_age"])
+        )
+        monthly_inc = st.number_input(
+            "Desired Monthly Income (£)",
+            min_value=100.0,
+            value=float(curr_data["monthly_inc"]),
+            step=100.0,
+        )
+        increased_monthly_inc = st.number_input(
+            "Increase Income To (£)",
+            min_value=0.0,
+            value=float(curr_data.get("increased_monthly_inc", 0.0)),
+            step=100.0,
+            help="Set above £0 to step up monthly income from Increase Date onwards.",
+        )
+        increase_date = st.date_input(
+            "Increase Date",
+            value=curr_data.get("increase_date", get_next_tax_year_start()),
+            min_value=date.today(),
+            format="DD/MM/YYYY",
+        )
+        reduced_monthly_inc = st.number_input(
+            "Reduce Income To (£)",
+            min_value=0.0,
+            value=float(curr_data.get("reduced_monthly_inc", curr_data["monthly_inc"] * 0.75)),
+            step=50.0,
+        )
+        reduced_inc_age = st.number_input(
+            "Reduced Income Age",
+            min_value=50,
+            max_value=100,
+            value=int(curr_data.get("reduced_inc_age", 80)),
+        )
+        inflation_rate = st.slider(
+            "Annual Inflation Rate (%)",
+            min_value=0.0,
+            max_value=10.0,
+            value=float(curr_data.get("inflation_rate", 3.0)),
+            step=0.1,
+        )
 
-    st.markdown("---")
-    st.subheader("💵 Lump Sum Injections (Up to 3)")
-    pot_options = ["S&S ISA", "SIPP", "Workplace Pension", "Other Investment"]
+    # Section 2: COLLAPSED BY DEFAULT (expanded=False)
+    with st.expander("💵 Lump Sum Injections (Up to 3)", expanded=False):
+        pot_options = ["S&S ISA", "SIPP", "Workplace Pension", "Other Investment"]
 
-    st.markdown("##### Lump Sum 1")
-    ls1_amt = st.number_input("Lump Sum 1 Amount (£)", min_value=0.0, value=float(curr_data.get("lump_sum_1_amt", 0.0)), step=1000.0)
-    ls1_date = st.date_input("Lump Sum 1 Date", value=curr_data.get("lump_sum_1_date", get_next_tax_year_start()), min_value=date.today(), format="DD/MM/YYYY")
-    ls1_pot = st.selectbox("Lump Sum 1 Target Pot", options=pot_options, index=pot_options.index(curr_data.get("lump_sum_1_pot", "S&S ISA")))
+        st.markdown("##### Lump Sum 1")
+        ls1_amt = st.number_input("Lump Sum 1 Amount (£)", min_value=0.0, value=float(curr_data.get("lump_sum_1_amt", 0.0)), step=1000.0)
+        ls1_date = st.date_input("Lump Sum 1 Date", value=curr_data.get("lump_sum_1_date", get_next_tax_year_start()), min_value=date.today(), format="DD/MM/YYYY")
+        ls1_pot = st.selectbox("Lump Sum 1 Target Pot", options=pot_options, index=pot_options.index(curr_data.get("lump_sum_1_pot", "S&S ISA")))
 
-    st.markdown("##### Lump Sum 2")
-    ls2_amt = st.number_input("Lump Sum 2 Amount (£)", min_value=0.0, value=float(curr_data.get("lump_sum_2_amt", 0.0)), step=1000.0)
-    ls2_date = st.date_input("Lump Sum 2 Date", value=curr_data.get("lump_sum_2_date", get_next_tax_year_start()), min_value=date.today(), format="DD/MM/YYYY")
-    ls2_pot = st.selectbox("Lump Sum 2 Target Pot", options=pot_options, index=pot_options.index(curr_data.get("lump_sum_2_pot", "S&S ISA")))
+        st.markdown("##### Lump Sum 2")
+        ls2_amt = st.number_input("Lump Sum 2 Amount (£)", min_value=0.0, value=float(curr_data.get("lump_sum_2_amt", 0.0)), step=1000.0)
+        ls2_date = st.date_input("Lump Sum 2 Date", value=curr_data.get("lump_sum_2_date", get_next_tax_year_start()), min_value=date.today(), format="DD/MM/YYYY")
+        ls2_pot = st.selectbox("Lump Sum 2 Target Pot", options=pot_options, index=pot_options.index(curr_data.get("lump_sum_2_pot", "S&S ISA")))
 
-    st.markdown("##### Lump Sum 3")
-    ls3_amt = st.number_input("Lump Sum 3 Amount (£)", min_value=0.0, value=float(curr_data.get("lump_sum_3_amt", 0.0)), step=1000.0)
-    ls3_date = st.date_input("Lump Sum 3 Date", value=curr_data.get("lump_sum_3_date", get_next_tax_year_start()), min_value=date.today(), format="DD/MM/YYYY")
-    ls3_pot = st.selectbox("Lump Sum 3 Target Pot", options=pot_options, index=pot_options.index(curr_data.get("lump_sum_3_pot", "S&S ISA")))
+        st.markdown("##### Lump Sum 3")
+        ls3_amt = st.number_input("Lump Sum 3 Amount (£)", min_value=0.0, value=float(curr_data.get("lump_sum_3_amt", 0.0)), step=1000.0)
+        ls3_date = st.date_input("Lump Sum 3 Date", value=curr_data.get("lump_sum_3_date", get_next_tax_year_start()), min_value=date.today(), format="DD/MM/YYYY")
+        ls3_pot = st.selectbox("Lump Sum 3 Target Pot", options=pot_options, index=pot_options.index(curr_data.get("lump_sum_3_pot", "S&S ISA")))
 
-    st.markdown("---")
-    st.subheader("📉 Market Stress Testing")
-    crash_pct = st.slider(
-        "Market Crash (%)",
-        min_value=0.0,
-        max_value=75.0,
-        value=float(curr_data.get("crash_pct", 0.0)),
-        step=1.0,
-    )
-    crash_date = st.date_input(
-        "Crash Date",
-        value=curr_data.get("crash_date", get_next_tax_year_start()),
-        min_value=date.today(),
-        format="DD/MM/YYYY",
-    )
+    # Section 3: COLLAPSED BY DEFAULT (expanded=False)
+    with st.expander("📉 Market Stress Testing", expanded=False):
+        crash_pct = st.slider(
+            "Market Crash (%)",
+            min_value=0.0,
+            max_value=75.0,
+            value=float(curr_data.get("crash_pct", 0.0)),
+            step=1.0,
+        )
+        crash_date = st.date_input(
+            "Crash Date",
+            value=curr_data.get("crash_date", get_next_tax_year_start()),
+            min_value=date.today(),
+            format="DD/MM/YYYY",
+        )
 
-    st.markdown("---")
-    st.subheader("📜 Pension Annuity")
-    annuity_annual = st.number_input("Annual Pension Annuity (£)", min_value=0.0, value=float(curr_data.get("annuity_annual", 0.0)), step=500.0)
-    annuity_cost = st.number_input("Cost of Annuity (£)", min_value=0.0, value=float(curr_data.get("annuity_cost", 0.0)), step=5000.0)
-    annuity_start_date = st.date_input(
-        "Annuity Start Date",
-        value=curr_data.get("annuity_start_date", date(2031, 12, 1)),
-        min_value=date.today(),
-        format="DD/MM/YYYY",
-    )
+    # Section 4: COLLAPSED BY DEFAULT (expanded=False)
+    with st.expander("📜 Pension Annuity", expanded=False):
+        annuity_annual = st.number_input("Annual Pension Annuity (£)", min_value=0.0, value=float(curr_data.get("annuity_annual", 0.0)), step=500.0)
+        annuity_cost = st.number_input("Cost of Annuity (£)", min_value=0.0, value=float(curr_data.get("annuity_cost", 0.0)), step=5000.0)
+        annuity_start_date = st.date_input(
+            "Annuity Start Date",
+            value=curr_data.get("annuity_start_date", date(2031, 12, 1)),
+            min_value=date.today(),
+            format="DD/MM/YYYY",
+        )
 
-    st.markdown("---")
-    st.subheader("🏛️ State Pension")
-    has_state_pension = st.checkbox("Include State Pension", value=curr_data.get("has_state_pension", True))
-    state_pension_age = st.number_input("State Pension Start Age", min_value=60, max_value=75, value=int(curr_data.get("state_pension_age", 67)))
-    state_pension_amount = st.number_input("State Pension Annual (£)", min_value=0.0, value=float(curr_data.get("state_pension_amount", 12548.0)), step=100.0)
-    state_pension_growth = st.slider("State Pension Annual Growth (%)", min_value=0.0, max_value=10.0, value=float(curr_data.get("state_pension_growth", 2.5)), step=0.1)
+    # Section 5: COLLAPSED BY DEFAULT (expanded=False)
+    with st.expander("🏛️ State Pension", expanded=False):
+        has_state_pension = st.checkbox("Include State Pension", value=curr_data.get("has_state_pension", True))
+        state_pension_age = st.number_input("State Pension Start Age", min_value=60, max_value=75, value=int(curr_data.get("state_pension_age", 67)))
+        state_pension_amount = st.number_input("State Pension Annual (£)", min_value=0.0, value=float(curr_data.get("state_pension_amount", 12548.0)), step=100.0)
+        state_pension_growth = st.slider("State Pension Annual Growth (%)", min_value=0.0, max_value=10.0, value=float(curr_data.get("state_pension_growth", 2.5)), step=0.1)
 
-    st.markdown("---")
-    st.subheader("💰 Pot Balances, Returns & Pre-Retirement Contributions")
+    # Section 6: COLLAPSED BY DEFAULT (expanded=False)
+    with st.expander("💰 Pot Balances, Returns & Contributions", expanded=False):
+        st.markdown("##### SIPP")
+        sipp_bal = st.number_input("SIPP Pot Balance (£)", value=float(curr_data["sipp_bal"]), step=5000.0)
+        sipp_ret = st.slider("SIPP Annual Return (%)", 0.0, 15.0, float(curr_data.get("sipp_ret", 7.0)))
+        sipp_contrib = st.number_input("SIPP Monthly Contribution (£)", value=float(curr_data.get("sipp_contrib", 500.0)), step=50.0)
 
-    st.markdown("##### SIPP")
-    sipp_bal = st.number_input("SIPP Pot Balance (£)", value=float(curr_data["sipp_bal"]), step=5000.0)
-    sipp_ret = st.slider("SIPP Annual Return (%)", 0.0, 15.0, float(curr_data.get("sipp_ret", 7.0)))
-    sipp_contrib = st.number_input("SIPP Monthly Contribution (£)", value=float(curr_data.get("sipp_contrib", 500.0)), step=50.0)
+        st.markdown("##### Workplace Pension")
+        wp_bal = st.number_input("Workplace Pension Total (£)", value=float(curr_data["wp_bal"]), step=5000.0)
+        wp_ret = st.slider("Workplace Return (%)", 0.0, 15.0, float(curr_data.get("wp_ret", 7.0)))
+        wp_contrib = st.number_input("Workplace Monthly Contribution (£)", value=float(curr_data.get("wp_contrib", 700.0)), step=50.0)
 
-    st.markdown("##### Workplace Pension")
-    wp_bal = st.number_input("Workplace Pension Total (£)", value=float(curr_data["wp_bal"]), step=5000.0)
-    wp_ret = st.slider("Workplace Return (%)", 0.0, 15.0, float(curr_data.get("wp_ret", 7.0)))
-    wp_contrib = st.number_input("Workplace Monthly Contribution (£)", value=float(curr_data.get("wp_contrib", 700.0)), step=50.0)
+        st.markdown("##### Stocks & Shares ISA")
+        isa_bal = st.number_input("Stocks & Shares ISA (£)", value=float(curr_data["isa_bal"]), step=5000.0)
+        isa_ret = st.slider("ISA Annual Return (%)", 0.0, 15.0, float(curr_data.get("isa_ret", 7.0)))
+        isa_contrib = st.number_input("ISA Monthly Contribution (£)", value=float(curr_data.get("isa_contrib", 0.0)), step=50.0)
 
-    st.markdown("##### Stocks & Shares ISA")
-    isa_bal = st.number_input("Stocks & Shares ISA (£)", value=float(curr_data["isa_bal"]), step=5000.0)
-    isa_ret = st.slider("ISA Annual Return (%)", 0.0, 15.0, float(curr_data.get("isa_ret", 7.0)))
-    isa_contrib = st.number_input("ISA Monthly Contribution (£)", value=float(curr_data.get("isa_contrib", 0.0)), step=50.0)
+        st.markdown("##### Other Investment")
+        other_bal = st.number_input("Other Investment (£)", value=float(curr_data["other_bal"]), step=5000.0)
+        other_ret = st.slider("Other Return (%)", 0.0, 15.0, float(curr_data.get("other_ret", 3.0)))
+        other_contrib = st.number_input("Other Monthly Contribution (£)", value=float(curr_data.get("other_contrib", 0.0)), step=50.0)
 
-    st.markdown("##### Other Investment")
-    other_bal = st.number_input("Other Investment (£)", value=float(curr_data["other_bal"]), step=5000.0)
-    other_ret = st.slider("Other Return (%)", 0.0, 15.0, float(curr_data.get("other_ret", 3.0)))
-    other_contrib = st.number_input("Other Monthly Contribution (£)", value=float(curr_data.get("other_contrib", 0.0)), step=50.0)
-
-    st.markdown("---")
-    view_mode = st.radio(
-        "Display View",
-        ["Tax Year", "Monthly (Default)"],
-        index=0 if curr_data["view_mode"] == "Tax Year" else 1,
-    )
+    # Section 7: COLLAPSED BY DEFAULT (expanded=False)
+    with st.expander("👁️ Display View", expanded=False):
+        view_mode = st.radio(
+            "Display View Mode",
+            ["Tax Year", "Monthly (Default)"],
+            index=0 if curr_data["view_mode"] == "Tax Year" else 1,
+        )
 
     submit_bottom = st.form_submit_button(
         label="🔄 Recalculate Forecast", use_container_width=True, key="recalc_bottom"
