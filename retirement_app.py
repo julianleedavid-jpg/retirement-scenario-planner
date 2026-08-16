@@ -1161,7 +1161,7 @@ with col_sec1:
         st.markdown(f"### Monthly Budget for **{selected_profile}**")
         st.caption("Align your household outgoings against your desired monthly income target.")
 
-        budget_items = active_p.get("budget_items", [])
+        raw_budget_items = active_p.get("budget_items", [])
 
         # Sorting option selector
         sort_option = st.radio(
@@ -1171,10 +1171,19 @@ with col_sec1:
             key=f"budget_sort_option_{selected_profile}"
         )
 
+        # Build current list capturing any active edits from session widgets before sorting
+        current_items = []
+        for i, item in enumerate(raw_budget_items):
+            item_val = st.session_state.get(f"budget_item_{selected_profile}_{i}", item.get("item", item.get("category", "")))
+            amt_val = st.session_state.get(f"budget_amt_{selected_profile}_{i}", float(item.get("amount", 0.0)))
+            current_items.numpy = {"item": item_val, "amount": amt_val}
+            current_items.append({"item": item_val, "amount": amt_val})
+
+        # Apply requested sort order
         if sort_option == "Alphabetical":
-            budget_items = sorted(budget_items, key=lambda x: str(x.get("item", "")).lower())
+            budget_items = sorted(current_items, key=lambda x: str(x.get("item", "")).lower())
         else:
-            budget_items = sorted(budget_items, key=lambda x: float(x.get("amount", 0.0)), reverse=True)
+            budget_items = sorted(current_items, key=lambda x: float(x.get("amount", 0.0)), reverse=True)
 
         total_budget_outgoings = sum(item.get("amount", 0.0) for item in budget_items)
         desired_inc = float(active_p["monthly_inc"])
@@ -1200,7 +1209,7 @@ with col_sec1:
         for i, item in enumerate(budget_items):
             cols = st.columns([3, 2, 1])
             with cols[0]:
-                item_val = st.text_input("Expenditure Item", value=item.get("item", item.get("category", "")), key=f"budget_item_{selected_profile}_{i}", label_visibility="collapsed")
+                item_val = st.text_input("Expenditure Item", value=item.get("item", ""), key=f"budget_item_{selected_profile}_{i}", label_visibility="collapsed")
             with cols[1]:
                 amt_val = st.number_input("Amount", value=float(item.get("amount", 0.0)), step=25.0, key=f"budget_amt_{selected_profile}_{i}", label_visibility="collapsed")
             with cols[2]:
