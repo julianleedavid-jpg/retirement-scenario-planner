@@ -1273,11 +1273,11 @@ with col_sec1:
 
         st.markdown("##### Add New Expenditure Item")
         
-        # Clear new item inputs from session state when rendering to prevent duplication leakage
-        new_item_key = f"new_item_{selected_profile}"
-        new_month_key = f"new_month_{selected_profile}"
-        new_amt_key = f"new_amt_{selected_profile}"
-        new_annual_key = f"new_annual_{selected_profile}"
+        # Use unique form keys and handle submission state cleanly
+        new_item_key = f"new_item_name_{selected_profile}"
+        new_month_key = f"new_month_val_{selected_profile}"
+        new_amt_key = f"new_amt_val_{selected_profile}"
+        new_annual_key = f"new_annual_val_{selected_profile}"
 
         new_item_name = st.text_input("New Expenditure Item Name", placeholder="e.g. Insurance, Gym...", key=new_item_key)
         new_month = st.selectbox("New Month Paid", options=MONTH_OPTIONS, key=new_month_key)
@@ -1285,7 +1285,7 @@ with col_sec1:
         new_annual = st.number_input("New Annual Amount (£)", min_value=0.0, value=0.0, step=100.0, key=new_annual_key)
 
         if st.button("➕ Add Item to Budget", key=f"add_budget_btn_{selected_profile}"):
-            if new_item_name:
+            if new_item_name and new_item_name.strip():
                 final_monthly = new_amt
                 final_annual = new_annual if new_annual > 0 else new_amt * 12.0
                 if new_annual > 0 and new_amt == 0:
@@ -1297,7 +1297,7 @@ with col_sec1:
                     st.session_state.pop(f"budget_amt_{selected_profile}_{idx_clear}", None)
                     st.session_state.pop(f"budget_annual_{selected_profile}_{idx_clear}", None)
 
-                surviving_budget_items.append({"item": new_item_name, "month_paid": new_month, "amount": final_monthly, "annual_amount": final_annual})
+                surviving_budget_items.append({"item": new_item_name.strip(), "month_paid": new_month, "amount": final_monthly, "annual_amount": final_annual})
                 
                 if st.session_state[sort_key_state] == "Alphabetical":
                     surviving_budget_items = sorted(surviving_budget_items, key=lambda x: str(x.get("item", "")).lower())
@@ -1307,7 +1307,7 @@ with col_sec1:
                 st.session_state.scenarios[selected_profile]["budget_items"] = surviving_budget_items
                 save_scenarios()
                 
-                # Clear add widget keys so they reset cleanly on rerun
+                # Clear input widget keys so form inputs reset cleanly
                 st.session_state.pop(new_item_key, None)
                 st.session_state.pop(new_amt_key, None)
                 st.session_state.pop(new_annual_key, None)
