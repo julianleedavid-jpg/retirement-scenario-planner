@@ -1162,6 +1162,20 @@ with col_sec1:
         st.caption("Align your household outgoings against your desired monthly income target.")
 
         budget_items = active_p.get("budget_items", [])
+
+        # Sorting option selector
+        sort_option = st.radio(
+            "Sort Expenditure Items By:",
+            options=["Alphabetical", "Amount (High to Low)"],
+            horizontal=True,
+            key=f"budget_sort_option_{selected_profile}"
+        )
+
+        if sort_option == "Alphabetical":
+            budget_items = sorted(budget_items, key=lambda x: str(x.get("item", "")).lower())
+        else:
+            budget_items = sorted(budget_items, key=lambda x: float(x.get("amount", 0.0)), reverse=True)
+
         total_budget_outgoings = sum(item.get("amount", 0.0) for item in budget_items)
         desired_inc = float(active_p["monthly_inc"])
         budget_variance = desired_inc - total_budget_outgoings
@@ -1202,6 +1216,10 @@ with col_sec1:
         if st.button("➕ Add Item to Budget", key=f"add_budget_btn_{selected_profile}"):
             if new_item_name:
                 updated_budget_items.append({"item": new_item_name, "amount": new_amt})
+                if sort_option == "Alphabetical":
+                    updated_budget_items = sorted(updated_budget_items, key=lambda x: str(x.get("item", "")).lower())
+                else:
+                    updated_budget_items = sorted(updated_budget_items, key=lambda x: float(x.get("amount", 0.0)), reverse=True)
                 st.session_state.scenarios[selected_profile]["budget_items"] = updated_budget_items
                 save_scenarios()
                 st.success("Item added!")
@@ -1210,6 +1228,10 @@ with col_sec1:
                 st.warning("Please enter an expenditure item name.")
 
         if st.button("💾 Save Budget Changes", key=f"save_budget_btn_{selected_profile}"):
+            if sort_option == "Alphabetical":
+                updated_budget_items = sorted(updated_budget_items, key=lambda x: str(x.get("item", "")).lower())
+            else:
+                updated_budget_items = sorted(updated_budget_items, key=lambda x: float(x.get("amount", 0.0)), reverse=True)
             st.session_state.scenarios[selected_profile]["budget_items"] = updated_budget_items
             save_scenarios()
             st.toast(f"Budget saved for profile '{selected_profile}'!", icon="💾")
