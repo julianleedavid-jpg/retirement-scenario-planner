@@ -1184,7 +1184,7 @@ with col_sec1:
         if sort_option != st.session_state[sort_key_state]:
             st.session_state[sort_key_state] = sort_option
             raw_items_to_clear = st.session_state.scenarios[selected_profile].get("budget_items", [])
-            for idx in range(len(raw_items_to_clear) + 5):
+            for idx in range(len(raw_items_to_clear) + 10):
                 st.session_state.pop(f"budget_item_{selected_profile}_{idx}", None)
                 st.session_state.pop(f"budget_month_{selected_profile}_{idx}", None)
                 st.session_state.pop(f"budget_amt_{selected_profile}_{idx}", None)
@@ -1193,6 +1193,7 @@ with col_sec1:
 
         raw_budget_items = st.session_state.scenarios[selected_profile].get("budget_items", [])
 
+        # Build current items from active session state or raw data
         current_items = []
         for i, item in enumerate(raw_budget_items):
             item_val = st.session_state.get(f"budget_item_{selected_profile}_{i}", item.get("item", item.get("category", "")))
@@ -1237,7 +1238,7 @@ with col_sec1:
         with hcol5:
             st.markdown("")
 
-        updated_budget_items = []
+        surviving_budget_items = []
         for i, item in enumerate(budget_items):
             cols = st.columns([3, 2, 2, 2, 1])
             with cols[0]:
@@ -1249,22 +1250,27 @@ with col_sec1:
             
             monthly_key = f"budget_amt_{selected_profile}_{i}"
             annual_key = f"budget_annual_{selected_profile}_{i}"
-            
-            def update_from_monthly(m_key=monthly_key, a_key=annual_key):
-                st.session_state[a_key] = st.session_state[m_key] * 12.0
-
-            def update_from_annual(m_key=monthly_key, a_key=annual_key):
-                st.session_state[m_key] = st.session_state[a_key] / 12.0
 
             with cols[2]:
-                amt_val = st.number_input("Monthly Amount", value=float(item.get("amount", 0.0)), step=25.0, key=monthly_key, on_change=update_from_monthly, label_visibility="collapsed")
+                amt_val = st.number_input("Monthly Amount", value=float(item.get("amount", 0.0)), step=25.0, key=monthly_key, label_visibility="collapsed")
             with cols[3]:
-                annual_val = st.number_input("Annual Amount", value=float(item.get("annual_amount", item.get("amount", 0.0) * 12.0)), step=100.0, key=annual_key, on_change=update_from_annual, label_visibility="collapsed")
+                annual_val = st.number_input("Annual Amount", value=float(item.get("annual_amount", item.get("amount", 0.0) * 12.0)), step=100.0, key=annual_key, label_visibility="collapsed")
             with cols[4]:
                 remove_clicked = st.button("🗑️", key=f"del_budget_{selected_profile}_{i}")
             
-            if not remove_clicked:
-                updated_budget_items.append({"item": item_val, "month_paid": month_val, "amount": amt_val, "annual_amount": annual_val})
+            if remove_clicked:
+                for idx_clear in range(len(budget_items) + 10):
+                    st.session_state.pop(f"budget_item_{selected_profile}_{idx_clear}", None)
+                    st.session_state.pop(f"budget_month_{selected_profile}_{idx_clear}", None)
+                    st.session_state.pop(f"budget_amt_{selected_profile}_{idx_clear}", None)
+                    st.session_state.pop(f"budget_annual_{selected_profile}_{idx_clear}", None)
+                
+                budget_items.pop(i)
+                st.session_state.scenarios[selected_profile]["budget_items"] = budget_items
+                save_scenarios()
+                st.rerun()
+            else:
+                surviving_budget_items.append({"item": item_val, "month_paid": month_val, "amount": amt_val, "annual_amount": annual_val})
 
         st.markdown("##### Add New Expenditure Item")
         new_item_name = st.text_input("New Expenditure Item Name", placeholder="e.g. Insurance, Gym...", key=f"new_item_{selected_profile}")
@@ -1279,20 +1285,20 @@ with col_sec1:
                 if new_annual > 0 and new_amt == 0:
                     final_monthly = new_annual / 12.0
 
-                # Clear old widget states before appending and rerunning to prevent state duplication issues
-                for idx in range(len(updated_budget_items) + 5):
-                    st.session_state.pop(f"budget_item_{selected_profile}_{idx}", None)
-                    st.session_state.pop(f"budget_month_{selected_profile}_{idx}", None)
-                    st.session_state.pop(f"budget_amt_{selected_profile}_{idx}", None)
-                    st.session_state.pop(f"budget_annual_{selected_profile}_{idx}", None)
+                for idx_clear in range(len(surviving_budget_items) + 10):
+                    st.session_state.pop(f"budget_item_{selected_profile}_{idx_clear}", None)
+                    st.session_state.pop(f"budget_month_{selected_profile}_{idx_clear}", None)
+                    st.session_state.pop(f"budget_amt_{selected_profile}_{idx_clear}", None)
+                    st.session_state.pop(f"budget_annual_{selected_profile}_{idx_clear}", None)
 
-                updated_budget_items.append({"item": new_item_name, "month_paid": new_month, "amount": final_monthly, "annual_amount": final_annual})
-                if st.session_state[sort_key_state] == "Alphabetical":
-                    updated_budget_items = sorted(updated_budget_items, key=lambda x: str(x.get("item", "")).lower())
-                else:
-                    updated_budget_items = sorted(updated_budget_items, key=lambda x: float(x.get("amount", 0.0)), reverse=True)
+                surviving_budget_items.append({"item": new_item_name, "month_paid": new_month, "amount": final_monthly, "annual_amount": final_annual})
                 
-                st.session_state.scenarios[selected_profile]["budget_items"] = updated_budget_items
+                if st.session_state[sort_key_state] == "Alphabetical":
+                    surviving_budget_items = sorted(surviving_budget_items, key=lambda x: str(x.get("item", "")).lower())
+                else:
+                    surviving_budget_items = sorted(surviving_budget_items, key=lambda x: float(x.get("amount", 0.0)), reverse=True)
+                
+                st.session_state.scenarios[selected_profile]["budget_items"] = surviving_budget_items
                 save_scenarios()
                 st.success("Item added!")
                 st.rerun()
@@ -1300,18 +1306,18 @@ with col_sec1:
                 st.warning("Please enter an expenditure item name.")
 
         if st.button("💾 Save Budget Changes", key=f"save_budget_btn_{selected_profile}"):
-            for idx in range(len(updated_budget_items) + 5):
-                st.session_state.pop(f"budget_item_{selected_profile}_{idx}", None)
-                st.session_state.pop(f"budget_month_{selected_profile}_{idx}", None)
-                st.session_state.pop(f"budget_amt_{selected_profile}_{idx}", None)
-                st.session_state.pop(f"budget_annual_{selected_profile}_{idx}", None)
+            for idx_clear in range(len(surviving_budget_items) + 10):
+                st.session_state.pop(f"budget_item_{selected_profile}_{idx_clear}", None)
+                st.session_state.pop(f"budget_month_{selected_profile}_{idx_clear}", None)
+                st.session_state.pop(f"budget_amt_{selected_profile}_{idx_clear}", None)
+                st.session_state.pop(f"budget_annual_{selected_profile}_{idx_clear}", None)
 
             if st.session_state[sort_key_state] == "Alphabetical":
-                updated_budget_items = sorted(updated_budget_items, key=lambda x: str(x.get("item", "")).lower())
+                surviving_budget_items = sorted(surviving_budget_items, key=lambda x: str(x.get("item", "")).lower())
             else:
-                updated_budget_items = sorted(updated_budget_items, key=lambda x: float(x.get("amount", 0.0)), reverse=True)
+                surviving_budget_items = sorted(surviving_budget_items, key=lambda x: float(x.get("amount", 0.0)), reverse=True)
             
-            st.session_state.scenarios[selected_profile]["budget_items"] = updated_budget_items
+            st.session_state.scenarios[selected_profile]["budget_items"] = surviving_budget_items
             save_scenarios()
             st.toast(f"Budget saved for profile '{selected_profile}'!", icon="💾")
             st.rerun()
