@@ -179,7 +179,6 @@ def deserialize_scenario(scen_dict: dict) -> dict:
         else:
             deserialized[k] = v
     
-    # Ensure budget items exist and migrate old 'category' keys to 'item' if present
     if "budget_items" not in deserialized:
         deserialized["budget_items"] = []
     else:
@@ -1173,7 +1172,7 @@ with col_sec1:
 
         st.markdown("---")
         
-        # Single heading for the item list
+        # Single heading at the top of the list
         hcol1, hcol2, hcol3 = st.columns([3, 2, 1])
         hcol1.markdown("**Item**")
         hcol2.markdown("**Amount (£)**")
@@ -1280,3 +1279,4 @@ with col_notes2:
         
         *Note: The FTSE 100 was introduced on January 3, 1984. Recovery times reflect nominal market price returns reaching previous peaks.*
         """)
+```[cite: 1]
