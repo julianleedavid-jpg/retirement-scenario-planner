@@ -185,6 +185,17 @@ def deserialize_scenario(scen_dict: dict) -> dict:
                 deserialized[k] = v
         else:
             deserialized[k] = v
+            
+    # Automatically upgrade legacy pot names from old JSON saves
+    legacy_pot_names = {
+        "Workplace Pension": "Private Pension", 
+        "S&S ISA": "Stocks & Shares ISA"
+    }
+    for i in [1, 2, 3]:
+        pot_key = f"lump_sum_{i}_pot"
+        if pot_key in deserialized:
+            deserialized[pot_key] = legacy_pot_names.get(deserialized[pot_key], deserialized[pot_key])
+
     if "budget_items" not in deserialized:
         deserialized["budget_items"] = []
     else:
@@ -855,20 +866,23 @@ with st.sidebar.form(key=f"scenario_form_{selected_profile}"):
     with st.expander("💵 Lump Sum Injections / Withdrawals (Up to 3)", expanded=False):
         pot_options = ["Stocks & Shares ISA", "SIPP", "Private Pension", "Other Investment"]
 
+        def get_pot_index(saved_pot):
+            return pot_options.index(saved_pot) if saved_pot in pot_options else 0
+
         st.markdown("##### Lump Sum 1")
         ls1_amt = st.number_input("Lump Sum 1 Amount (£)", min_value=-1000000.0, value=float(curr_data.get("lump_sum_1_amt", 0.0)), step=1000.0, help="Enter a negative amount to simulate a withdrawal.")
         ls1_date = st.date_input("Lump Sum 1 Date", value=curr_data.get("lump_sum_1_date", get_next_tax_year_start()), min_value=date.today(), format="DD/MM/YYYY")
-        ls1_pot = st.selectbox("Lump Sum 1 Target Pot", options=pot_options, index=pot_options.index("Private Pension" if curr_data.get("lump_sum_1_pot") == "Workplace Pension" else curr_data.get("lump_sum_1_pot", "Stocks & Shares ISA")))
+        ls1_pot = st.selectbox("Lump Sum 1 Target Pot", options=pot_options, index=get_pot_index(curr_data.get("lump_sum_1_pot", "Stocks & Shares ISA")))
 
         st.markdown("##### Lump Sum 2")
         ls2_amt = st.number_input("Lump Sum 2 Amount (£)", min_value=-1000000.0, value=float(curr_data.get("lump_sum_2_amt", 0.0)), step=1000.0, help="Enter a negative amount to simulate a withdrawal.")
         ls2_date = st.date_input("Lump Sum 2 Date", value=curr_data.get("lump_sum_2_date", get_next_tax_year_start()), min_value=date.today(), format="DD/MM/YYYY")
-        ls2_pot = st.selectbox("Lump Sum 2 Target Pot", options=pot_options, index=pot_options.index("Private Pension" if curr_data.get("lump_sum_2_pot") == "Workplace Pension" else curr_data.get("lump_sum_2_pot", "Stocks & Shares ISA")))
+        ls2_pot = st.selectbox("Lump Sum 2 Target Pot", options=pot_options, index=get_pot_index(curr_data.get("lump_sum_2_pot", "Stocks & Shares ISA")))
 
         st.markdown("##### Lump Sum 3")
         ls3_amt = st.number_input("Lump Sum 3 Amount (£)", min_value=-1000000.0, value=float(curr_data.get("lump_sum_3_amt", 0.0)), step=1000.0, help="Enter a negative amount to simulate a withdrawal.")
         ls3_date = st.date_input("Lump Sum 3 Date", value=curr_data.get("lump_sum_3_date", get_next_tax_year_start()), min_value=date.today(), format="DD/MM/YYYY")
-        ls3_pot = st.selectbox("Lump Sum 3 Target Pot", options=pot_options, index=pot_options.index("Private Pension" if curr_data.get("lump_sum_3_pot") == "Workplace Pension" else curr_data.get("lump_sum_3_pot", "Stocks & Shares ISA")))
+        ls3_pot = st.selectbox("Lump Sum 3 Target Pot", options=pot_options, index=get_pot_index(curr_data.get("lump_sum_3_pot", "Stocks & Shares ISA")))
 
     try:
         max_crash_date = date(dob.year + 100, dob.month, dob.day)
@@ -1006,17 +1020,17 @@ lump_sums_list = [
     LumpSum(
         amount=active_p.get("lump_sum_1_amt", 0.0),
         injection_date=active_p.get("lump_sum_1_date", get_next_tax_year_start()),
-        target_pot="Private Pension" if active_p.get("lump_sum_1_pot") == "Workplace Pension" else active_p.get("lump_sum_1_pot", "Stocks & Shares ISA"),
+        target_pot=active_p.get("lump_sum_1_pot", "Stocks & Shares ISA"),
     ),
     LumpSum(
         amount=active_p.get("lump_sum_2_amt", 0.0),
         injection_date=active_p.get("lump_sum_2_date", get_next_tax_year_start()),
-        target_pot="Private Pension" if active_p.get("lump_sum_2_pot") == "Workplace Pension" else active_p.get("lump_sum_2_pot", "Stocks & Shares ISA"),
+        target_pot=active_p.get("lump_sum_2_pot", "Stocks & Shares ISA"),
     ),
     LumpSum(
         amount=active_p.get("lump_sum_3_amt", 0.0),
         injection_date=active_p.get("lump_sum_3_date", get_next_tax_year_start()),
-        target_pot="Private Pension" if active_p.get("lump_sum_3_pot") == "Workplace Pension" else active_p.get("lump_sum_3_pot", "Stocks & Shares ISA"),
+        target_pot=active_p.get("lump_sum_3_pot", "Stocks & Shares ISA"),
     ),
 ]
 
