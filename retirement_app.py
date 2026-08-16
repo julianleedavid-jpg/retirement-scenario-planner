@@ -1061,7 +1061,7 @@ st.subheader("📊 Portfolio Trajectory & Drawdown Forecast")
 st.line_chart(
     active_df,
     x=x_col,
-    y=["sipp", "private_pension", "isa", "other_investment", "total_portfolio"],
+    y=["sipp", "private_pension", "isa", "other_investment", "total_portfolio", "desired_annual_income"],
 )
 
 st.subheader("📋 Balances and Drawdown Table (Up to Age 100)")
