@@ -1163,23 +1163,34 @@ with col_sec1:
 
         raw_budget_items = active_p.get("budget_items", [])
 
-        # Sorting option selector
-        sort_option = st.radio(
-            "Sort Expenditure Items By:",
-            options=["Alphabetical", "Amount (High to Low)"],
-            horizontal=True,
-            key=f"budget_sort_option_{selected_profile}"
-        )
+        # Sorting option radio and explicit Sort Button side-by-side or stacked cleanly
+        sort_col1, sort_col2 = st.columns([3, 1])
+        with sort_col1:
+            sort_option = st.radio(
+                "Sort Expenditure Items By:",
+                options=["Alphabetical", "Amount (High to Low)"],
+                horizontal=True,
+                key=f"budget_sort_option_{selected_profile}"
+            )
+        with sort_col2:
+            st.markdown("<br>", unsafe_allow_html=True)
+            sort_triggered = st.button("🔀 Sort List", key=f"sort_btn_{selected_profile}")
 
-        # Build current list capturing any active edits from session widgets before sorting
+        # Capture live edits from inputs into session state before applying resort
         current_items = []
         for i, item in enumerate(raw_budget_items):
             item_val = st.session_state.get(f"budget_item_{selected_profile}_{i}", item.get("item", item.get("category", "")))
             amt_val = st.session_state.get(f"budget_amt_{selected_profile}_{i}", float(item.get("amount", 0.0)))
             current_items.append({"item": item_val, "amount": amt_val})
 
-        # Apply requested sort order
-        if sort_option == "Alphabetical":
+        # Persist captured items back immediately
+        st.session_state.scenarios[selected_profile]["budget_items"] = current_items
+
+        # Apply sorting logic when button is clicked or if already saved in a sorted state
+        if sort_triggered or "last_sort_option" not in st.session_state:
+            st.session_state["last_sort_option"] = sort_option
+
+        if st.session_state.get("last_sort_option") == "Alphabetical":
             budget_items = sorted(current_items, key=lambda x: str(x.get("item", "")).lower())
         else:
             budget_items = sorted(current_items, key=lambda x: float(x.get("amount", 0.0)), reverse=True)
@@ -1224,7 +1235,7 @@ with col_sec1:
         if st.button("➕ Add Item to Budget", key=f"add_budget_btn_{selected_profile}"):
             if new_item_name:
                 updated_budget_items.append({"item": new_item_name, "amount": new_amt})
-                if sort_option == "Alphabetical":
+                if st.session_state.get("last_sort_option") == "Alphabetical":
                     updated_budget_items = sorted(updated_budget_items, key=lambda x: str(x.get("item", "")).lower())
                 else:
                     updated_budget_items = sorted(updated_budget_items, key=lambda x: float(x.get("amount", 0.0)), reverse=True)
@@ -1236,7 +1247,7 @@ with col_sec1:
                 st.warning("Please enter an expenditure item name.")
 
         if st.button("💾 Save Budget Changes", key=f"save_budget_btn_{selected_profile}"):
-            if sort_option == "Alphabetical":
+            if st.session_state.get("last_sort_option") == "Alphabetical":
                 updated_budget_items = sorted(updated_budget_items, key=lambda x: str(x.get("item", "")).lower())
             else:
                 updated_budget_items = sorted(updated_budget_items, key=lambda x: float(x.get("amount", 0.0)), reverse=True)
