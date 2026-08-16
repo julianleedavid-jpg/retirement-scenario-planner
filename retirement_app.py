@@ -99,11 +99,11 @@ DEFAULT_PROFILES = {
         "view_mode": "Tax Year",
         "notes": "",
         "budget_items": [
-            {"item": "Housing / Council Tax", "amount": 800.0},
-            {"item": "Utilities & Broadband", "amount": 250.0},
-            {"item": "Groceries", "amount": 400.0},
-            {"item": "Transport & Fuel", "amount": 200.0},
-            {"item": "Leisure & Holidays", "amount": 350.0},
+            {"item": "Housing / Council Tax", "amount": 800.0, "month_paid": "Monthly", "annual_amount": 9600.0},
+            {"item": "Utilities & Broadband", "amount": 250.0, "month_paid": "Monthly", "annual_amount": 3000.0},
+            {"item": "Groceries", "amount": 400.0, "month_paid": "Monthly", "annual_amount": 4800.0},
+            {"item": "Transport & Fuel", "amount": 200.0, "month_paid": "Monthly", "annual_amount": 2400.0},
+            {"item": "Leisure & Holidays", "amount": 350.0, "month_paid": "Monthly", "annual_amount": 4200.0},
         ],
     },
     "Karen": {
@@ -149,13 +149,19 @@ DEFAULT_PROFILES = {
         "view_mode": "Tax Year",
         "notes": "",
         "budget_items": [
-            {"item": "Housing / Council Tax", "amount": 700.0},
-            {"item": "Utilities & Broadband", "amount": 200.0},
-            {"item": "Groceries", "amount": 350.0},
-            {"item": "Transport & Fuel", "amount": 150.0},
+            {"item": "Housing / Council Tax", "amount": 700.0, "month_paid": "Monthly", "annual_amount": 8400.0},
+            {"item": "Utilities & Broadband", "amount": 200.0, "month_paid": "Monthly", "annual_amount": 2400.0},
+            {"item": "Groceries", "amount": 350.0, "month_paid": "Monthly", "annual_amount": 4200.0},
+            {"item": "Transport & Fuel", "amount": 150.0, "month_paid": "Monthly", "annual_amount": 1800.0},
         ],
     },
 }
+
+MONTH_OPTIONS = [
+    "Monthly",
+    "January", "February", "March", "April", "May", "June",
+    "July", "August", "September", "October", "November", "December"
+]
 
 
 def serialize_scenario(scen_dict: dict) -> dict:
@@ -182,10 +188,13 @@ def deserialize_scenario(scen_dict: dict) -> dict:
     if "budget_items" not in deserialized:
         deserialized["budget_items"] = []
     else:
-        # Migrate old 'category' key to 'item' if present
         for item in deserialized["budget_items"]:
             if "category" in item and "item" not in item:
                 item["item"] = item.pop("category")
+            if "month_paid" not in item:
+                item["month_paid"] = "Monthly"
+            if "annual_amount" not in item:
+                item["annual_amount"] = item.get("amount", 0.0) * 12.0
     return deserialized
 
 
@@ -1169,7 +1178,7 @@ with col_sec1:
         # Sorting option selector
         sort_option = st.radio(
             "Sort Expenditure Items By:",
-            options=["Alphabetical", "Amount (High to Low)"],
+            options=["Alphabetical", "Monthly Amount (High to Low)"],
             horizontal=True,
             key=f"budget_sort_option_{selected_profile}"
         )
@@ -1177,23 +1186,34 @@ with col_sec1:
         # Detect if user changed the sort option radio button
         if sort_option != st.session_state[sort_key_state]:
             st.session_state[sort_key_state] = sort_option
-            # Clear old widget states so they re-initialize cleanly in the new sort order
             raw_items_to_clear = st.session_state.scenarios[selected_profile].get("budget_items", [])
             for idx in range(len(raw_items_to_clear) + 5):
                 st.session_state.pop(f"budget_item_{selected_profile}_{idx}", None)
+                st.session_state.pop(f"budget_month_{selected_profile}_{idx}", None)
                 st.session_state.pop(f"budget_amt_{selected_profile}_{idx}", None)
+                st.session_state.pop(f"budget_annual_{selected_profile}_{idx}", None)
             st.rerun()
 
         raw_budget_items = st.session_state.scenarios[selected_profile].get("budget_items", [])
 
-        # Build current list capturing any active edits from session widgets
+        # Build current list capturing any active edits and syncing monthly <-> annual interactions bidirectionally
         current_items = []
         for i, item in enumerate(raw_budget_items):
             item_val = st.session_state.get(f"budget_item_{selected_profile}_{i}", item.get("item", item.get("category", "")))
-            amt_val = st.session_state.get(f"budget_amt_{selected_profile}_{i}", float(item.get("amount", 0.0)))
-            current_items.append({"item": item_val, "amount": amt_val})
+            month_val = st.session_state.get(f"budget_month_{selected_profile}_{i}", item.get("month_paid", "Monthly"))
+            
+            default_monthly = float(item.get("amount", 0.0))
+            default_annual = float(item.get("annual_amount", default_monthly * 12.0))
+            
+            monthly_key = f"budget_amt_{selected_profile}_{i}"
+            annual_key = f"budget_annual_{selected_profile}_{i}"
+            
+            monthly_val = st.session_state.get(monthly_key, default_monthly)
+            annual_val = st.session_state.get(annual_key, default_annual)
+            
+            current_items.append({"item": item_val, "month_paid": month_val, "amount": monthly_val, "annual_amount": annual_val})
 
-        # Apply requested sort order to the data structure
+        # Apply requested sort order
         if st.session_state[sort_key_state] == "Alphabetical":
             budget_items = sorted(current_items, key=lambda x: str(x.get("item", "")).lower())
         else:
@@ -1210,34 +1230,63 @@ with col_sec1:
 
         st.markdown("---")
         
-        hcol1, hcol2, hcol3 = st.columns([3, 2, 1])
+        # Display column headings: Expenditure Item, Month Paid, Monthly Amount, Annual Amount, Delete
+        hcol1, hcol2, hcol3, hcol4, hcol5 = st.columns([3, 2, 2, 2, 1])
         with hcol1:
             st.markdown("**Expenditure Item**")
         with hcol2:
-            st.markdown("**Amount**")
+            st.markdown("**Month Paid**")
         with hcol3:
+            st.markdown("**Monthly Amount**")
+        with hcol4:
+            st.markdown("**Annual Amount**")
+        with hcol5:
             st.markdown("")
 
         updated_budget_items = []
         for i, item in enumerate(budget_items):
-            cols = st.columns([3, 2, 1])
+            cols = st.columns([3, 2, 2, 2, 1])
             with cols[0]:
                 item_val = st.text_input("Expenditure Item", value=item.get("item", ""), key=f"budget_item_{selected_profile}_{i}", label_visibility="collapsed")
             with cols[1]:
-                amt_val = st.number_input("Amount", value=float(item.get("amount", 0.0)), step=25.0, key=f"budget_amt_{selected_profile}_{i}", label_visibility="collapsed")
+                current_month_val = item.get("month_paid", "Monthly")
+                month_idx = MONTH_OPTIONS.index(current_month_val) if current_month_val in MONTH_OPTIONS else 0
+                month_val = st.selectbox("Month Paid", options=MONTH_OPTIONS, index=month_idx, key=f"budget_month_{selected_profile}_{i}", label_visibility="collapsed")
+            
+            monthly_key = f"budget_amt_{selected_profile}_{i}"
+            annual_key = f"budget_annual_{selected_profile}_{i}"
+            
+            # Handle callbacks to sync Monthly <-> Annual inputs cleanly
+            def update_from_monthly(m_key=monthly_key, a_key=annual_key):
+                st.session_state[a_key] = st.session_state[m_key] * 12.0
+
+            def update_from_annual(m_key=monthly_key, a_key=annual_key):
+                st.session_state[m_key] = st.session_state[a_key] / 12.0
+
             with cols[2]:
+                amt_val = st.number_input("Monthly Amount", value=float(item.get("amount", 0.0)), step=25.0, key=monthly_key, on_change=update_from_monthly, label_visibility="collapsed")
+            with cols[3]:
+                annual_val = st.number_input("Annual Amount", value=float(item.get("annual_amount", item.get("amount", 0.0) * 12.0)), step=100.0, key=annual_key, on_change=update_from_annual, label_visibility="collapsed")
+            with cols[4]:
                 remove_clicked = st.button("🗑️", key=f"del_budget_{selected_profile}_{i}")
             
             if not remove_clicked:
-                updated_budget_items.append({"item": item_val, "amount": amt_val})
+                updated_budget_items.append({"item": item_val, "month_paid": month_val, "amount": amt_val, "annual_amount": annual_val})
 
         st.markdown("##### Add New Expenditure Item")
         new_item_name = st.text_input("New Expenditure Item Name", placeholder="e.g. Insurance, Gym...", key=f"new_item_{selected_profile}")
-        new_amt = st.number_input("New Amount (£)", min_value=0.0, value=0.0, step=25.0, key=f"new_amt_{selected_profile}")
+        new_month = st.selectbox("New Month Paid", options=MONTH_OPTIONS, key=f"new_month_{selected_profile}")
+        new_amt = st.number_input("New Monthly Amount (£)", min_value=0.0, value=0.0, step=25.0, key=f"new_amt_{selected_profile}")
+        new_annual = st.number_input("New Annual Amount (£)", min_value=0.0, value=0.0, step=100.0, key=f"new_annual_{selected_profile}")
 
         if st.button("➕ Add Item to Budget", key=f"add_budget_btn_{selected_profile}"):
             if new_item_name:
-                updated_budget_items.append({"item": new_item_name, "amount": new_amt})
+                final_monthly = new_amt
+                final_annual = new_annual if new_annual > 0 else new_amt * 12.0
+                if new_annual > 0 and new_amt == 0:
+                    final_monthly = new_annual / 12.0
+
+                updated_budget_items.append({"item": new_item_name, "month_paid": new_month, "amount": final_monthly, "annual_amount": final_annual})
                 if st.session_state[sort_key_state] == "Alphabetical":
                     updated_budget_items = sorted(updated_budget_items, key=lambda x: str(x.get("item", "")).lower())
                 else:
