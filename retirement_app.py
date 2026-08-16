@@ -3,6 +3,7 @@ from datetime import date, timedelta
 import json
 import os
 from typing import List, Tuple
+import uuid
 import pandas as pd
 import streamlit as st
 
@@ -99,11 +100,11 @@ DEFAULT_PROFILES = {
         "view_mode": "Tax Year",
         "notes": "",
         "budget_items": [
-            {"item": "Housing / Council Tax", "amount": 800.0, "month_paid": "Monthly", "annual_amount": 9600.0},
-            {"item": "Utilities & Broadband", "amount": 250.0, "month_paid": "Monthly", "annual_amount": 3000.0},
-            {"item": "Groceries", "amount": 400.0, "month_paid": "Monthly", "annual_amount": 4800.0},
-            {"item": "Transport & Fuel", "amount": 200.0, "month_paid": "Monthly", "annual_amount": 2400.0},
-            {"item": "Leisure & Holidays", "amount": 350.0, "month_paid": "Monthly", "annual_amount": 4200.0},
+            {"id": str(uuid.uuid4()), "item": "Housing / Council Tax", "amount": 800.0, "month_paid": "Monthly", "annual_amount": 9600.0},
+            {"id": str(uuid.uuid4()), "item": "Utilities & Broadband", "amount": 250.0, "month_paid": "Monthly", "annual_amount": 3000.0},
+            {"id": str(uuid.uuid4()), "item": "Groceries", "amount": 400.0, "month_paid": "Monthly", "annual_amount": 4800.0},
+            {"id": str(uuid.uuid4()), "item": "Transport & Fuel", "amount": 200.0, "month_paid": "Monthly", "annual_amount": 2400.0},
+            {"id": str(uuid.uuid4()), "item": "Leisure & Holidays", "amount": 350.0, "month_paid": "Monthly", "annual_amount": 4200.0},
         ],
     },
     "Karen": {
@@ -131,9 +132,9 @@ DEFAULT_PROFILES = {
         "state_pension_age": 67,
         "state_pension_amount": 12548.0,
         "state_pension_growth": 2.5,
-        "annuity_annual": 15929.0,  # Accrued RCPS Nuvos DB Pension as of 2025
+        "annuity_annual": 15929.0,
         "annuity_cost": 0.0,
-        "annuity_start_age": 65, # Nuvos Normal Pension Age
+        "annuity_start_age": 65,
         "inflate_annuity_to_start": False,
         "lump_sum_1_amt": 0.0,
         "lump_sum_1_date": get_next_tax_year_start(),
@@ -149,10 +150,10 @@ DEFAULT_PROFILES = {
         "view_mode": "Tax Year",
         "notes": "",
         "budget_items": [
-            {"item": "Housing / Council Tax", "amount": 700.0, "month_paid": "Monthly", "annual_amount": 8400.0},
-            {"item": "Utilities & Broadband", "amount": 200.0, "month_paid": "Monthly", "annual_amount": 2400.0},
-            {"item": "Groceries", "amount": 350.0, "month_paid": "Monthly", "annual_amount": 4200.0},
-            {"item": "Transport & Fuel", "amount": 150.0, "month_paid": "Monthly", "annual_amount": 1800.0},
+            {"id": str(uuid.uuid4()), "item": "Housing / Council Tax", "amount": 700.0, "month_paid": "Monthly", "annual_amount": 8400.0},
+            {"id": str(uuid.uuid4()), "item": "Utilities & Broadband", "amount": 200.0, "month_paid": "Monthly", "annual_amount": 2400.0},
+            {"id": str(uuid.uuid4()), "item": "Groceries", "amount": 350.0, "month_paid": "Monthly", "annual_amount": 4200.0},
+            {"id": str(uuid.uuid4()), "item": "Transport & Fuel", "amount": 150.0, "month_paid": "Monthly", "annual_amount": 1800.0},
         ],
     },
 }
@@ -184,11 +185,13 @@ def deserialize_scenario(scen_dict: dict) -> dict:
                 deserialized[k] = v
         else:
             deserialized[k] = v
-    # Ensure budget items exist for loaded profiles
+    # Ensure budget items exist for loaded profiles and have unique IDs
     if "budget_items" not in deserialized:
         deserialized["budget_items"] = []
     else:
         for item in deserialized["budget_items"]:
+            if "id" not in item:
+                item["id"] = str(uuid.uuid4())
             if "category" in item and "item" not in item:
                 item["item"] = item.pop("category")
             if "month_paid" not in item:
@@ -335,7 +338,6 @@ class RetirementEngine:
         except ValueError:
             target_100_date = date(self.dob.year + 100, 2, 28)
 
-        # Derive exact annuity start date from annuity_start_age
         try:
             annuity_start_date = date(self.dob.year + self.scenario.annuity_start_age, self.dob.month, self.dob.day)
         except ValueError:
@@ -359,7 +361,6 @@ class RetirementEngine:
         crash_capped_income = None
         lump_sums_applied = [False] * len(self.scenario.lump_sums)
 
-        # Pre-calculate base starting annuity at Start Date if inflation toggle is checked
         base_annuity = self.scenario.annuity_annual
         if self.scenario.inflate_annuity_to_start and annuity_start_date > start_date:
             years_to_start = (annuity_start_date - start_date).days / 365.25
@@ -375,7 +376,6 @@ class RetirementEngine:
                 isa_credited_this_tax_year = 0.0
                 last_tax_year = current_tax_year
 
-            # Evaluate active annual annuity amount every day once target annuity start age reached
             current_annual_annuity = 0.0
             if current_date >= annuity_start_date and base_annuity > 0:
                 years_since_annuity = current_date.year - annuity_start_date.year - (
@@ -385,11 +385,9 @@ class RetirementEngine:
                     (1.0 + self.scenario.inflation_rate) ** max(0, years_since_annuity)
                 )
 
-            # Apply Lump Sum Injections / Withdrawals with waterfall cascade rules
             for idx, ls in enumerate(self.scenario.lump_sums):
                 if not lump_sums_applied[idx] and ls.amount != 0 and current_date >= ls.injection_date:
                     if ls.amount > 0:
-                        # Positive injection handling
                         if ls.target_pot == "SIPP":
                             sipp += ls.amount
                         elif ls.target_pot == "Private Pension":
@@ -400,7 +398,6 @@ class RetirementEngine:
                         elif ls.target_pot == "Other Investment":
                             other += ls.amount
                     else:
-                        # Negative withdrawal handling with waterfall spillover
                         rem_withdrawal = abs(ls.amount)
                         
                         def draw_from_pot(current_bal, requested):
@@ -416,7 +413,6 @@ class RetirementEngine:
                                 total_wp, rem_withdrawal = draw_from_pot(total_wp, rem_withdrawal)
                                 wp_taxable = total_wp * 0.75
                                 wp_tax_free = total_wp * 0.25
-
                         elif ls.target_pot == "Other Investment":
                             other, rem_withdrawal = draw_from_pot(other, rem_withdrawal)
                             if rem_withdrawal > 0:
@@ -426,7 +422,6 @@ class RetirementEngine:
                                 total_wp, rem_withdrawal = draw_from_pot(total_wp, rem_withdrawal)
                                 wp_taxable = total_wp * 0.75
                                 wp_tax_free = total_wp * 0.25
-
                         elif ls.target_pot == "Private Pension":
                             total_wp = wp_taxable + wp_tax_free
                             total_wp, rem_withdrawal = draw_from_pot(total_wp, rem_withdrawal)
@@ -436,13 +431,11 @@ class RetirementEngine:
                                 other, rem_withdrawal = draw_from_pot(other, rem_withdrawal)
                             if rem_withdrawal > 0:
                                 sipp, rem_withdrawal = draw_from_pot(sipp, rem_withdrawal)
-
                         elif ls.target_pot == "S&S ISA":
                             isa, rem_withdrawal = draw_from_pot(isa, rem_withdrawal)
 
                     lump_sums_applied[idx] = True
 
-            # Apply Market Crash
             if (
                 not crash_applied
                 and self.scenario.crash_pct > 0
@@ -475,7 +468,6 @@ class RetirementEngine:
                     )
                     crash_capped_income = annual_sp_at_crash / 12.0
 
-            # Deduct Annuity Purchase Cost
             if current_date >= annuity_start_date and not annuity_purchased:
                 cost_rem = self.scenario.annuity_cost
                 if cost_rem > 0:
@@ -503,7 +495,6 @@ class RetirementEngine:
 
                 annuity_purchased = True
 
-            # Pre-Retirement Monthly Contributions
             if not is_retired and current_date.day == 1:
                 sipp += self.scenario.sipp.monthly_contrib
                 wp_taxable += self.scenario.workplace_taxable.monthly_contrib
@@ -511,7 +502,6 @@ class RetirementEngine:
                 isa += self.scenario.isa.monthly_contrib
                 other += self.scenario.other_investment.monthly_contrib
 
-            # Daily Growth
             sipp *= 1.0 + self._get_daily_rate(self.scenario.sipp.annual_return)
             wp_taxable *= 1.0 + self._get_daily_rate(
                 self.scenario.workplace_taxable.annual_return
@@ -556,7 +546,6 @@ class RetirementEngine:
                     (1.0 + self.scenario.inflation_rate) ** years_since_start
                 )
 
-            # Sweep excess "Other Investment" above 2x desired annual income into S&S ISA on the 1st of each month
             if current_date.day == 1:
                 current_desired_annual = inflated_monthly_income * 12.0
                 threshold_other = 2.0 * current_desired_annual
@@ -569,7 +558,6 @@ class RetirementEngine:
                         isa += to_isa_from_other
                         isa_credited_this_tax_year += to_isa_from_other
 
-            # Post-Retirement Drawdown Execution (Runs on the 1st of each month)
             if is_retired and current_date.day == 1:
                 if current_annual_annuity > 0:
                     annuity_monthly = current_annual_annuity / 12.0
@@ -662,11 +650,9 @@ class RetirementEngine:
                         needed_net -= draw
                         monthly_drawn_from_pots += draw
 
-                # Track unfulfilled shortfall as negative portfolio deficit
                 if needed_net > 0:
                     cumulative_deficit += needed_net
 
-            # Strictly Defined Contribution pot balance for Private Pension (annuity excluded)
             private_pension_val = wp_taxable + wp_tax_free
             total_portfolio = (sipp + wp_taxable + wp_tax_free + isa + other) - cumulative_deficit
             total_monthly_income = monthly_drawn_from_pots + state_pension_monthly + annuity_monthly
@@ -697,7 +683,6 @@ class RetirementEngine:
 
         df = pd.DataFrame(daily_records)
 
-        # Monthly Snapshot Aggregation (grouped strictly by unique YYYY-MM)
         monthly_df = (
             df.groupby("raw_month")
             .agg({
@@ -721,7 +706,6 @@ class RetirementEngine:
         )
         monthly_df["year_month"] = monthly_df.apply(lambda r: f"{r['raw_month']} ({r['age']})", axis=1)
 
-        # Tax Year Snapshot Aggregation (grouped strictly by unique tax_year)
         tax_year_df = (
             df.groupby("tax_year")
             .agg({
@@ -796,7 +780,6 @@ with st.sidebar.expander("➕ Add New Profile / Copy Current"):
         elif new_profile_name in st.session_state.scenarios:
             st.warning("Profile name already exists.")
 
-# Delete Non-Default Profile Feature
 if selected_profile not in DEFAULT_PROFILES:
     if st.sidebar.button(f"🗑️ Delete Profile '{selected_profile}'", use_container_width=True):
         del st.session_state.scenarios[selected_profile]
@@ -1184,30 +1167,34 @@ with col_sec1:
         if sort_option != st.session_state[sort_key_state]:
             st.session_state[sort_key_state] = sort_option
             raw_items_to_clear = st.session_state.scenarios[selected_profile].get("budget_items", [])
-            for idx in range(len(raw_items_to_clear) + 15):
-                st.session_state.pop(f"budget_item_{selected_profile}_{idx}", None)
-                st.session_state.pop(f"budget_month_{selected_profile}_{idx}", None)
-                st.session_state.pop(f"budget_amt_{selected_profile}_{idx}", None)
-                st.session_state.pop(f"budget_annual_{selected_profile}_{idx}", None)
+            for item in raw_items_to_clear:
+                item_id = item.get("id", "")
+                st.session_state.pop(f"budget_item_{selected_profile}_{item_id}", None)
+                st.session_state.pop(f"budget_month_{selected_profile}_{item_id}", None)
+                st.session_state.pop(f"budget_amt_{selected_profile}_{item_id}", None)
+                st.session_state.pop(f"budget_annual_{selected_profile}_{item_id}", None)
             st.rerun()
 
         raw_budget_items = st.session_state.scenarios[selected_profile].get("budget_items", [])
 
         current_items = []
-        for i, item in enumerate(raw_budget_items):
-            item_val = st.session_state.get(f"budget_item_{selected_profile}_{i}", item.get("item", item.get("category", "")))
-            month_val = st.session_state.get(f"budget_month_{selected_profile}_{i}", item.get("month_paid", "Monthly"))
+        for item in raw_budget_items:
+            item_id = item.get("id", str(uuid.uuid4()))
+            item["id"] = item_id
+            
+            item_val = st.session_state.get(f"budget_item_{selected_profile}_{item_id}", item.get("item", item.get("category", "")))
+            month_val = st.session_state.get(f"budget_month_{selected_profile}_{item_id}", item.get("month_paid", "Monthly"))
             
             default_monthly = float(item.get("amount", 0.0))
             default_annual = float(item.get("annual_amount", default_monthly * 12.0))
             
-            monthly_key = f"budget_amt_{selected_profile}_{i}"
-            annual_key = f"budget_annual_{selected_profile}_{i}"
+            monthly_key = f"budget_amt_{selected_profile}_{item_id}"
+            annual_key = f"budget_annual_{selected_profile}_{item_id}"
             
             monthly_val = st.session_state.get(monthly_key, default_monthly)
             annual_val = st.session_state.get(annual_key, default_annual)
             
-            current_items.append({"item": item_val, "month_paid": month_val, "amount": monthly_val, "annual_amount": annual_val})
+            current_items.append({"id": item_id, "item": item_val, "month_paid": month_val, "amount": monthly_val, "annual_amount": annual_val})
 
         if st.session_state[sort_key_state] == "Alphabetical":
             budget_items = sorted(current_items, key=lambda x: str(x.get("item", "")).lower())
@@ -1239,41 +1226,42 @@ with col_sec1:
 
         surviving_budget_items = []
         for i, item in enumerate(budget_items):
+            item_id = item["id"]
             cols = st.columns([3, 2, 2, 2, 1])
             with cols[0]:
-                item_val = st.text_input("Expenditure Item", value=item.get("item", ""), key=f"budget_item_{selected_profile}_{i}", label_visibility="collapsed")
+                item_val = st.text_input("Expenditure Item", value=item.get("item", ""), key=f"budget_item_{selected_profile}_{item_id}", label_visibility="collapsed")
             with cols[1]:
                 current_month_val = item.get("month_paid", "Monthly")
                 month_idx = MONTH_OPTIONS.index(current_month_val) if current_month_val in MONTH_OPTIONS else 0
-                month_val = st.selectbox("Month Paid", options=MONTH_OPTIONS, index=month_idx, key=f"budget_month_{selected_profile}_{i}", label_visibility="collapsed")
+                month_val = st.selectbox("Month Paid", options=MONTH_OPTIONS, index=month_idx, key=f"budget_month_{selected_profile}_{item_id}", label_visibility="collapsed")
             
-            monthly_key = f"budget_amt_{selected_profile}_{i}"
-            annual_key = f"budget_annual_{selected_profile}_{i}"
+            monthly_key = f"budget_amt_{selected_profile}_{item_id}"
+            annual_key = f"budget_annual_{selected_profile}_{item_id}"
 
             with cols[2]:
                 amt_val = st.number_input("Monthly Amount", value=float(item.get("amount", 0.0)), step=25.0, key=monthly_key, label_visibility="collapsed")
             with cols[3]:
                 annual_val = st.number_input("Annual Amount", value=float(item.get("annual_amount", item.get("amount", 0.0) * 12.0)), step=100.0, key=annual_key, label_visibility="collapsed")
             with cols[4]:
-                remove_clicked = st.button("🗑️", key=f"del_budget_{selected_profile}_{i}")
+                remove_clicked = st.button("🗑️", key=f"del_budget_{selected_profile}_{item_id}")
             
             if remove_clicked:
-                for idx_clear in range(len(budget_items) + 15):
-                    st.session_state.pop(f"budget_item_{selected_profile}_{idx_clear}", None)
-                    st.session_state.pop(f"budget_month_{selected_profile}_{idx_clear}", None)
-                    st.session_state.pop(f"budget_amt_{selected_profile}_{idx_clear}", None)
-                    st.session_state.pop(f"budget_annual_{selected_profile}_{idx_clear}", None)
+                for b_item in budget_items:
+                    b_id = b_item.get("id", "")
+                    st.session_state.pop(f"budget_item_{selected_profile}_{b_id}", None)
+                    st.session_state.pop(f"budget_month_{selected_profile}_{b_id}", None)
+                    st.session_state.pop(f"budget_amt_{selected_profile}_{b_id}", None)
+                    st.session_state.pop(f"budget_annual_{selected_profile}_{b_id}", None)
                 
                 budget_items.pop(i)
                 st.session_state.scenarios[selected_profile]["budget_items"] = budget_items
                 save_scenarios()
                 st.rerun()
             else:
-                surviving_budget_items.append({"item": item_val, "month_paid": month_val, "amount": amt_val, "annual_amount": annual_val})
+                surviving_budget_items.append({"id": item_id, "item": item_val, "month_paid": month_val, "amount": amt_val, "annual_amount": annual_val})
 
         st.markdown("##### Add New Expenditure Item")
         
-        # Use unique form keys and handle submission state cleanly
         new_item_key = f"new_item_name_{selected_profile}"
         new_month_key = f"new_month_val_{selected_profile}"
         new_amt_key = f"new_amt_val_{selected_profile}"
@@ -1291,13 +1279,20 @@ with col_sec1:
                 if new_annual > 0 and new_amt == 0:
                     final_monthly = new_annual / 12.0
 
-                for idx_clear in range(len(surviving_budget_items) + 15):
-                    st.session_state.pop(f"budget_item_{selected_profile}_{idx_clear}", None)
-                    st.session_state.pop(f"budget_month_{selected_profile}_{idx_clear}", None)
-                    st.session_state.pop(f"budget_amt_{selected_profile}_{idx_clear}", None)
-                    st.session_state.pop(f"budget_annual_{selected_profile}_{idx_clear}", None)
+                for b_item in surviving_budget_items:
+                    b_id = b_item.get("id", "")
+                    st.session_state.pop(f"budget_item_{selected_profile}_{b_id}", None)
+                    st.session_state.pop(f"budget_month_{selected_profile}_{b_id}", None)
+                    st.session_state.pop(f"budget_amt_{selected_profile}_{b_id}", None)
+                    st.session_state.pop(f"budget_annual_{selected_profile}_{b_id}", None)
 
-                surviving_budget_items.append({"item": new_item_name.strip(), "month_paid": new_month, "amount": final_monthly, "annual_amount": final_annual})
+                surviving_budget_items.append({
+                    "id": str(uuid.uuid4()),
+                    "item": new_item_name.strip(),
+                    "month_paid": new_month,
+                    "amount": final_monthly,
+                    "annual_amount": final_annual
+                })
                 
                 if st.session_state[sort_key_state] == "Alphabetical":
                     surviving_budget_items = sorted(surviving_budget_items, key=lambda x: str(x.get("item", "")).lower())
@@ -1307,7 +1302,6 @@ with col_sec1:
                 st.session_state.scenarios[selected_profile]["budget_items"] = surviving_budget_items
                 save_scenarios()
                 
-                # Clear input widget keys so form inputs reset cleanly
                 st.session_state.pop(new_item_key, None)
                 st.session_state.pop(new_amt_key, None)
                 st.session_state.pop(new_annual_key, None)
@@ -1318,11 +1312,12 @@ with col_sec1:
                 st.warning("Please enter an expenditure item name.")
 
         if st.button("💾 Save Budget Changes", key=f"save_budget_btn_{selected_profile}"):
-            for idx_clear in range(len(surviving_budget_items) + 15):
-                st.session_state.pop(f"budget_item_{selected_profile}_{idx_clear}", None)
-                st.session_state.pop(f"budget_month_{selected_profile}_{idx_clear}", None)
-                st.session_state.pop(f"budget_amt_{selected_profile}_{idx_clear}", None)
-                st.session_state.pop(f"budget_annual_{selected_profile}_{idx_clear}", None)
+            for b_item in surviving_budget_items:
+                b_id = b_item.get("id", "")
+                st.session_state.pop(f"budget_item_{selected_profile}_{b_id}", None)
+                st.session_state.pop(f"budget_month_{selected_profile}_{b_id}", None)
+                st.session_state.pop(f"budget_amt_{selected_profile}_{b_id}", None)
+                st.session_state.pop(f"budget_annual_{selected_profile}_{b_id}", None)
 
             if st.session_state[sort_key_state] == "Alphabetical":
                 surviving_budget_items = sorted(surviving_budget_items, key=lambda x: str(x.get("item", "")).lower())
