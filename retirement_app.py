@@ -1170,12 +1170,10 @@ with col_sec1:
         st.markdown(f"### Monthly Budget for **{selected_profile}**")
         st.caption("Align your household outgoings against your desired monthly income target.")
 
-        # Initialize sort direction in session state if missing
         sort_key_state = f"sort_pref_{selected_profile}"
         if sort_key_state not in st.session_state:
             st.session_state[sort_key_state] = "Alphabetical"
 
-        # Sorting option selector
         sort_option = st.radio(
             "Sort Expenditure Items By:",
             options=["Alphabetical", "Monthly Amount (High to Low)"],
@@ -1183,7 +1181,6 @@ with col_sec1:
             key=f"budget_sort_option_{selected_profile}"
         )
 
-        # Detect if user changed the sort option radio button
         if sort_option != st.session_state[sort_key_state]:
             st.session_state[sort_key_state] = sort_option
             raw_items_to_clear = st.session_state.scenarios[selected_profile].get("budget_items", [])
@@ -1196,7 +1193,6 @@ with col_sec1:
 
         raw_budget_items = st.session_state.scenarios[selected_profile].get("budget_items", [])
 
-        # Build current list capturing any active edits and syncing monthly <-> annual interactions bidirectionally
         current_items = []
         for i, item in enumerate(raw_budget_items):
             item_val = st.session_state.get(f"budget_item_{selected_profile}_{i}", item.get("item", item.get("category", "")))
@@ -1213,7 +1209,6 @@ with col_sec1:
             
             current_items.append({"item": item_val, "month_paid": month_val, "amount": monthly_val, "annual_amount": annual_val})
 
-        # Apply requested sort order
         if st.session_state[sort_key_state] == "Alphabetical":
             budget_items = sorted(current_items, key=lambda x: str(x.get("item", "")).lower())
         else:
@@ -1230,7 +1225,6 @@ with col_sec1:
 
         st.markdown("---")
         
-        # Display column headings: Expenditure Item, Month Paid, Monthly Amount, Annual Amount, Delete
         hcol1, hcol2, hcol3, hcol4, hcol5 = st.columns([3, 2, 2, 2, 1])
         with hcol1:
             st.markdown("**Expenditure Item**")
@@ -1256,7 +1250,6 @@ with col_sec1:
             monthly_key = f"budget_amt_{selected_profile}_{i}"
             annual_key = f"budget_annual_{selected_profile}_{i}"
             
-            # Handle callbacks to sync Monthly <-> Annual inputs cleanly
             def update_from_monthly(m_key=monthly_key, a_key=annual_key):
                 st.session_state[a_key] = st.session_state[m_key] * 12.0
 
@@ -1286,11 +1279,19 @@ with col_sec1:
                 if new_annual > 0 and new_amt == 0:
                     final_monthly = new_annual / 12.0
 
+                # Clear old widget states before appending and rerunning to prevent state duplication issues
+                for idx in range(len(updated_budget_items) + 5):
+                    st.session_state.pop(f"budget_item_{selected_profile}_{idx}", None)
+                    st.session_state.pop(f"budget_month_{selected_profile}_{idx}", None)
+                    st.session_state.pop(f"budget_amt_{selected_profile}_{idx}", None)
+                    st.session_state.pop(f"budget_annual_{selected_profile}_{idx}", None)
+
                 updated_budget_items.append({"item": new_item_name, "month_paid": new_month, "amount": final_monthly, "annual_amount": final_annual})
                 if st.session_state[sort_key_state] == "Alphabetical":
                     updated_budget_items = sorted(updated_budget_items, key=lambda x: str(x.get("item", "")).lower())
                 else:
                     updated_budget_items = sorted(updated_budget_items, key=lambda x: float(x.get("amount", 0.0)), reverse=True)
+                
                 st.session_state.scenarios[selected_profile]["budget_items"] = updated_budget_items
                 save_scenarios()
                 st.success("Item added!")
@@ -1299,10 +1300,17 @@ with col_sec1:
                 st.warning("Please enter an expenditure item name.")
 
         if st.button("💾 Save Budget Changes", key=f"save_budget_btn_{selected_profile}"):
+            for idx in range(len(updated_budget_items) + 5):
+                st.session_state.pop(f"budget_item_{selected_profile}_{idx}", None)
+                st.session_state.pop(f"budget_month_{selected_profile}_{idx}", None)
+                st.session_state.pop(f"budget_amt_{selected_profile}_{idx}", None)
+                st.session_state.pop(f"budget_annual_{selected_profile}_{idx}", None)
+
             if st.session_state[sort_key_state] == "Alphabetical":
                 updated_budget_items = sorted(updated_budget_items, key=lambda x: str(x.get("item", "")).lower())
             else:
                 updated_budget_items = sorted(updated_budget_items, key=lambda x: float(x.get("amount", 0.0)), reverse=True)
+            
             st.session_state.scenarios[selected_profile]["budget_items"] = updated_budget_items
             save_scenarios()
             st.toast(f"Budget saved for profile '{selected_profile}'!", icon="💾")
