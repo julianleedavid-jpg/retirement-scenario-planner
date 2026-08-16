@@ -1176,7 +1176,6 @@ with col_sec1:
         for i, item in enumerate(raw_budget_items):
             item_val = st.session_state.get(f"budget_item_{selected_profile}_{i}", item.get("item", item.get("category", "")))
             amt_val = st.session_state.get(f"budget_amt_{selected_profile}_{i}", float(item.get("amount", 0.0)))
-            current_items.numpy = {"item": item_val, "amount": amt_val}
             current_items.append({"item": item_val, "amount": amt_val})
 
         # Apply requested sort order
