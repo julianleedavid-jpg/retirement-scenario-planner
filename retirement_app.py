@@ -355,18 +355,61 @@ class RetirementEngine:
                     (1.0 + self.scenario.inflation_rate) ** max(0, years_since_annuity)
                 )
 
-            # Apply Lump Sum Injections / Withdrawals
+            # Apply Lump Sum Injections / Withdrawals with waterfall cascade rules
             for idx, ls in enumerate(self.scenario.lump_sums):
                 if not lump_sums_applied[idx] and ls.amount != 0 and current_date >= ls.injection_date:
-                    if ls.target_pot == "SIPP":
-                        sipp = max(0.0, sipp + ls.amount)
-                    elif ls.target_pot == "Private Pension":
-                        wp_tax_free = max(0.0, wp_tax_free + ls.amount * 0.25)
-                        wp_taxable = max(0.0, wp_taxable + ls.amount * 0.75)
-                    elif ls.target_pot == "S&S ISA":
-                        isa = max(0.0, isa + ls.amount)
-                    elif ls.target_pot == "Other Investment":
-                        other = max(0.0, other + ls.amount)
+                    if ls.amount > 0:
+                        # Positive injection handling
+                        if ls.target_pot == "SIPP":
+                            sipp += ls.amount
+                        elif ls.target_pot == "Private Pension":
+                            wp_tax_free += ls.amount * 0.25
+                            wp_taxable += ls.amount * 0.75
+                        elif ls.target_pot == "S&S ISA":
+                            isa += ls.amount
+                        elif ls.target_pot == "Other Investment":
+                            other += ls.amount
+                    else:
+                        # Negative withdrawal handling with waterfall spillover
+                        rem_withdrawal = abs(ls.amount)
+                        
+                        def draw_from_pot(current_bal, requested):
+                            possible = min(current_bal, requested)
+                            return current_bal - possible, requested - possible
+
+                        if ls.target_pot == "SIPP":
+                            sipp, rem_withdrawal = draw_from_pot(sipp, rem_withdrawal)
+                            if rem_withdrawal > 0:
+                                other, rem_withdrawal = draw_from_pot(other, rem_withdrawal)
+                            if rem_withdrawal > 0:
+                                total_wp = wp_taxable + wp_tax_free
+                                total_wp, rem_withdrawal = draw_from_pot(total_wp, rem_withdrawal)
+                                wp_taxable = total_wp * 0.75
+                                wp_tax_free = total_wp * 0.25
+
+                        elif ls.target_pot == "Other Investment":
+                            other, rem_withdrawal = draw_from_pot(other, rem_withdrawal)
+                            if rem_withdrawal > 0:
+                                sipp, rem_withdrawal = draw_from_pot(sipp, rem_withdrawal)
+                            if rem_withdrawal > 0:
+                                total_wp = wp_taxable + wp_tax_free
+                                total_wp, rem_withdrawal = draw_from_pot(total_wp, rem_withdrawal)
+                                wp_taxable = total_wp * 0.75
+                                wp_tax_free = total_wp * 0.25
+
+                        elif ls.target_pot == "Private Pension":
+                            total_wp = wp_taxable + wp_tax_free
+                            total_wp, rem_withdrawal = draw_from_pot(total_wp, rem_withdrawal)
+                            wp_taxable = total_wp * 0.75
+                            wp_tax_free = total_wp * 0.25
+                            if rem_withdrawal > 0:
+                                other, rem_withdrawal = draw_from_pot(other, rem_withdrawal)
+                            if rem_withdrawal > 0:
+                                sipp, rem_withdrawal = draw_from_pot(sipp, rem_withdrawal)
+
+                        elif ls.target_pot == "S&S ISA":
+                            isa, rem_withdrawal = draw_from_pot(isa, rem_withdrawal)
+
                     lump_sums_applied[idx] = True
 
             # Apply Market Crash
