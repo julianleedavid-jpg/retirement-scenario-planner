@@ -98,6 +98,13 @@ DEFAULT_PROFILES = {
         "crash_date": get_next_tax_year_start(),
         "view_mode": "Tax Year",
         "notes": "",
+        "budget_items": [
+            {"category": "Housing / Council Tax", "amount": 800.0},
+            {"category": "Utilities & Broadband", "amount": 250.0},
+            {"category": "Groceries", "amount": 400.0},
+            {"category": "Transport & Fuel", "amount": 200.0},
+            {"category": "Leisure & Holidays", "amount": 350.0},
+        ],
     },
     "Karen": {
         "dob": date(1980, 10, 16),
@@ -141,6 +148,12 @@ DEFAULT_PROFILES = {
         "crash_date": get_next_tax_year_start(),
         "view_mode": "Tax Year",
         "notes": "",
+        "budget_items": [
+            {"category": "Housing / Council Tax", "amount": 700.0},
+            {"category": "Utilities & Broadband", "amount": 200.0},
+            {"category": "Groceries", "amount": 350.0},
+            {"category": "Transport & Fuel", "amount": 150.0},
+        ],
     },
 }
 
@@ -165,6 +178,9 @@ def deserialize_scenario(scen_dict: dict) -> dict:
                 deserialized[k] = v
         else:
             deserialized[k] = v
+    # Ensure budget items exist for loaded profiles
+    if "budget_items" not in deserialized:
+        deserialized["budget_items"] = []
     return deserialized
 
 
@@ -977,6 +993,7 @@ with st.sidebar.form(key=f"scenario_form_{selected_profile}"):
             "state_pension_growth": state_pension_growth,
             "view_mode": view_mode,
             "notes": curr_data.get("notes", ""),
+            "budget_items": curr_data.get("budget_items", []),
         }
         save_scenarios()
         st.toast(f"Updated and saved '{selected_profile}'!", icon="✅")
@@ -1129,24 +1146,78 @@ st.dataframe(active_df, column_config=table_column_config, height=670, use_conta
 st.markdown("---")
 
 # ----------------------------------------------------------------------
-# 6. Editable Notes & Reference Sections
+# 6. Budget Manager & Custom Notes Sections
 # ----------------------------------------------------------------------
 
-# Collapsible & Editable Notes Section
-with st.expander("📝 Custom Profile Notes", expanded=False):
-    notes_key = f"notes_input_{selected_profile}"
-    user_notes = st.text_area(
-        "Notes & Key Assumptions for this Profile:",
-        value=active_p.get("notes", ""),
-        height=180,
-        key=notes_key,
-        placeholder="Type any custom notes, reminders, or scenario assumptions here...",
-    )
-    
-    if st.button("💾 Save Notes", key=f"save_notes_btn_{selected_profile}"):
-        st.session_state.scenarios[selected_profile]["notes"] = user_notes
-        save_scenarios()
-        st.toast(f"Notes saved for profile '{selected_profile}'!", icon="💾")
+col_sec1, col_sec2 = st.columns(2)
+
+with col_sec1:
+    with st.expander("💳 Household Budget Manager", expanded=False):
+        st.markdown(f"### Monthly Budget for **{selected_profile}**")
+        st.caption("Align your household outgoings against your desired monthly income target.")
+
+        budget_items = active_p.get("budget_items", [])
+        total_budget_outgoings = sum(item.get("amount", 0.0) for item in budget_items)
+        desired_inc = float(active_p["monthly_inc"])
+        budget_variance = desired_inc - total_budget_outgoings
+
+        bcol1, bcol2, bcol3 = st.columns(3)
+        bcol1.metric("Total Outgoings", f"£{total_budget_outgoings:,.2f}")
+        bcol2.metric("Desired Income", f"£{desired_inc:,.2f}")
+        bcol3.metric("Monthly Buffer / Surplus", f"£{budget_variance:,.2f}", delta=f"£{budget_variance:,.2f}")
+
+        st.markdown("---")
+        st.markdown("#### Edit Budget Line Items")
+
+        updated_budget_items = []
+        for i, item in enumerate(budget_items):
+            cols = st.columns([3, 2, 1])
+            with cols[0]:
+                cat_val = st.text_input("Category", value=item.get("category", ""), key=f"budget_cat_{selected_profile}_{i}")
+            with cols[1]:
+                amt_val = st.number_input("Amount (£)", value=float(item.get("amount", 0.0)), step=25.0, key=f"budget_amt_{selected_profile}_{i}")
+            with cols[2]:
+                st.markdown("<br>", unsafe_allow_html=True)
+                remove_clicked = st.button("🗑️", key=f"del_budget_{selected_profile}_{i}")
+            
+            if not remove_clicked:
+                updated_budget_items.append({"category": cat_val, "amount": amt_val})
+
+        st.markdown("##### Add New Budget Item")
+        new_cat = st.text_input("New Category Name", placeholder="e.g. Insurance, Gym...", key=f"new_cat_{selected_profile}")
+        new_amt = st.number_input("New Amount (£)", min_value=0.0, value=0.0, step=25.0, key=f"new_amt_{selected_profile}")
+
+        if st.button("➕ Add Item to Budget", key=f"add_budget_btn_{selected_profile}"):
+            if new_cat:
+                updated_budget_items.append({"category": new_cat, "amount": new_amt})
+                st.session_state.scenarios[selected_profile]["budget_items"] = updated_budget_items
+                save_scenarios()
+                st.success("Item added!")
+                st.rerun()
+            else:
+                st.warning("Please enter a category name.")
+
+        if st.button("💾 Save Budget Changes", key=f"save_budget_btn_{selected_profile}"):
+            st.session_state.scenarios[selected_profile]["budget_items"] = updated_budget_items
+            save_scenarios()
+            st.toast(f"Budget saved for profile '{selected_profile}'!", icon="💾")
+            st.rerun()
+
+with col_sec2:
+    with st.expander("📝 Custom Profile Notes", expanded=False):
+        notes_key = f"notes_input_{selected_profile}"
+        user_notes = st.text_area(
+            "Notes & Key Assumptions for this Profile:",
+            value=active_p.get("notes", ""),
+            height=180,
+            key=notes_key,
+            placeholder="Type any custom notes, reminders, or scenario assumptions here...",
+        )
+        
+        if st.button("💾 Save Notes", key=f"save_notes_btn_{selected_profile}"):
+            st.session_state.scenarios[selected_profile]["notes"] = user_notes
+            save_scenarios()
+            st.toast(f"Notes saved for profile '{selected_profile}'!", icon="💾")
 
 st.markdown("---")
 
