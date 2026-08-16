@@ -1184,7 +1184,7 @@ with col_sec1:
         if sort_option != st.session_state[sort_key_state]:
             st.session_state[sort_key_state] = sort_option
             raw_items_to_clear = st.session_state.scenarios[selected_profile].get("budget_items", [])
-            for idx in range(len(raw_items_to_clear) + 10):
+            for idx in range(len(raw_items_to_clear) + 15):
                 st.session_state.pop(f"budget_item_{selected_profile}_{idx}", None)
                 st.session_state.pop(f"budget_month_{selected_profile}_{idx}", None)
                 st.session_state.pop(f"budget_amt_{selected_profile}_{idx}", None)
@@ -1193,7 +1193,6 @@ with col_sec1:
 
         raw_budget_items = st.session_state.scenarios[selected_profile].get("budget_items", [])
 
-        # Build current items from active session state or raw data
         current_items = []
         for i, item in enumerate(raw_budget_items):
             item_val = st.session_state.get(f"budget_item_{selected_profile}_{i}", item.get("item", item.get("category", "")))
@@ -1259,7 +1258,7 @@ with col_sec1:
                 remove_clicked = st.button("🗑️", key=f"del_budget_{selected_profile}_{i}")
             
             if remove_clicked:
-                for idx_clear in range(len(budget_items) + 10):
+                for idx_clear in range(len(budget_items) + 15):
                     st.session_state.pop(f"budget_item_{selected_profile}_{idx_clear}", None)
                     st.session_state.pop(f"budget_month_{selected_profile}_{idx_clear}", None)
                     st.session_state.pop(f"budget_amt_{selected_profile}_{idx_clear}", None)
@@ -1273,10 +1272,17 @@ with col_sec1:
                 surviving_budget_items.append({"item": item_val, "month_paid": month_val, "amount": amt_val, "annual_amount": annual_val})
 
         st.markdown("##### Add New Expenditure Item")
-        new_item_name = st.text_input("New Expenditure Item Name", placeholder="e.g. Insurance, Gym...", key=f"new_item_{selected_profile}")
-        new_month = st.selectbox("New Month Paid", options=MONTH_OPTIONS, key=f"new_month_{selected_profile}")
-        new_amt = st.number_input("New Monthly Amount (£)", min_value=0.0, value=0.0, step=25.0, key=f"new_amt_{selected_profile}")
-        new_annual = st.number_input("New Annual Amount (£)", min_value=0.0, value=0.0, step=100.0, key=f"new_annual_{selected_profile}")
+        
+        # Clear new item inputs from session state when rendering to prevent duplication leakage
+        new_item_key = f"new_item_{selected_profile}"
+        new_month_key = f"new_month_{selected_profile}"
+        new_amt_key = f"new_amt_{selected_profile}"
+        new_annual_key = f"new_annual_{selected_profile}"
+
+        new_item_name = st.text_input("New Expenditure Item Name", placeholder="e.g. Insurance, Gym...", key=new_item_key)
+        new_month = st.selectbox("New Month Paid", options=MONTH_OPTIONS, key=new_month_key)
+        new_amt = st.number_input("New Monthly Amount (£)", min_value=0.0, value=0.0, step=25.0, key=new_amt_key)
+        new_annual = st.number_input("New Annual Amount (£)", min_value=0.0, value=0.0, step=100.0, key=new_annual_key)
 
         if st.button("➕ Add Item to Budget", key=f"add_budget_btn_{selected_profile}"):
             if new_item_name:
@@ -1285,7 +1291,7 @@ with col_sec1:
                 if new_annual > 0 and new_amt == 0:
                     final_monthly = new_annual / 12.0
 
-                for idx_clear in range(len(surviving_budget_items) + 10):
+                for idx_clear in range(len(surviving_budget_items) + 15):
                     st.session_state.pop(f"budget_item_{selected_profile}_{idx_clear}", None)
                     st.session_state.pop(f"budget_month_{selected_profile}_{idx_clear}", None)
                     st.session_state.pop(f"budget_amt_{selected_profile}_{idx_clear}", None)
@@ -1300,13 +1306,19 @@ with col_sec1:
                 
                 st.session_state.scenarios[selected_profile]["budget_items"] = surviving_budget_items
                 save_scenarios()
+                
+                # Clear add widget keys so they reset cleanly on rerun
+                st.session_state.pop(new_item_key, None)
+                st.session_state.pop(new_amt_key, None)
+                st.session_state.pop(new_annual_key, None)
+                
                 st.success("Item added!")
                 st.rerun()
             else:
                 st.warning("Please enter an expenditure item name.")
 
         if st.button("💾 Save Budget Changes", key=f"save_budget_btn_{selected_profile}"):
-            for idx_clear in range(len(surviving_budget_items) + 10):
+            for idx_clear in range(len(surviving_budget_items) + 15):
                 st.session_state.pop(f"budget_item_{selected_profile}_{idx_clear}", None)
                 st.session_state.pop(f"budget_month_{selected_profile}_{idx_clear}", None)
                 st.session_state.pop(f"budget_amt_{selected_profile}_{idx_clear}", None)
