@@ -99,11 +99,11 @@ DEFAULT_PROFILES = {
         "view_mode": "Tax Year",
         "notes": "",
         "budget_items": [
-            {"category": "Housing / Council Tax", "amount": 800.0},
-            {"category": "Utilities & Broadband", "amount": 250.0},
-            {"category": "Groceries", "amount": 400.0},
-            {"category": "Transport & Fuel", "amount": 200.0},
-            {"category": "Leisure & Holidays", "amount": 350.0},
+            {"item": "Housing / Council Tax", "amount": 800.0},
+            {"item": "Utilities & Broadband", "amount": 250.0},
+            {"item": "Groceries", "amount": 400.0},
+            {"item": "Transport & Fuel", "amount": 200.0},
+            {"item": "Leisure & Holidays", "amount": 350.0},
         ],
     },
     "Karen": {
@@ -149,10 +149,10 @@ DEFAULT_PROFILES = {
         "view_mode": "Tax Year",
         "notes": "",
         "budget_items": [
-            {"category": "Housing / Council Tax", "amount": 700.0},
-            {"category": "Utilities & Broadband", "amount": 200.0},
-            {"category": "Groceries", "amount": 350.0},
-            {"category": "Transport & Fuel", "amount": 150.0},
+            {"item": "Housing / Council Tax", "amount": 700.0},
+            {"item": "Utilities & Broadband", "amount": 200.0},
+            {"item": "Groceries", "amount": 350.0},
+            {"item": "Transport & Fuel", "amount": 150.0},
         ],
     },
 }
@@ -181,6 +181,11 @@ def deserialize_scenario(scen_dict: dict) -> dict:
     # Ensure budget items exist for loaded profiles
     if "budget_items" not in deserialized:
         deserialized["budget_items"] = []
+    else:
+        # Migrate old 'category' key to 'item' if present
+        for item in deserialized["budget_items"]:
+            if "category" in item and "item" not in item:
+                item["item"] = item.pop("category")
     return deserialized
 
 
@@ -1167,35 +1172,42 @@ with col_sec1:
         bcol3.metric("Monthly Buffer / Surplus", f"£{budget_variance:,.2f}", delta=f"£{budget_variance:,.2f}")
 
         st.markdown("---")
-        st.markdown("#### Edit Budget Line Items")
+        
+        # Display column headings as requested: Expenditure Item and Amount
+        hcol1, hcol2, hcol3 = st.columns([3, 2, 1])
+        with hcol1:
+            st.markdown("**Expenditure Item**")
+        with hcol2:
+            st.markdown("**Amount**")
+        with hcol3:
+            st.markdown("")
 
         updated_budget_items = []
         for i, item in enumerate(budget_items):
             cols = st.columns([3, 2, 1])
             with cols[0]:
-                cat_val = st.text_input("Category", value=item.get("category", ""), key=f"budget_cat_{selected_profile}_{i}")
+                item_val = st.text_input("Expenditure Item", value=item.get("item", item.get("category", "")), key=f"budget_item_{selected_profile}_{i}", label_visibility="collapsed")
             with cols[1]:
-                amt_val = st.number_input("Amount (£)", value=float(item.get("amount", 0.0)), step=25.0, key=f"budget_amt_{selected_profile}_{i}")
+                amt_val = st.number_input("Amount", value=float(item.get("amount", 0.0)), step=25.0, key=f"budget_amt_{selected_profile}_{i}", label_visibility="collapsed")
             with cols[2]:
-                st.markdown("<br>", unsafe_allow_html=True)
                 remove_clicked = st.button("🗑️", key=f"del_budget_{selected_profile}_{i}")
             
             if not remove_clicked:
-                updated_budget_items.append({"category": cat_val, "amount": amt_val})
+                updated_budget_items.append({"item": item_val, "amount": amt_val})
 
-        st.markdown("##### Add New Budget Item")
-        new_cat = st.text_input("New Category Name", placeholder="e.g. Insurance, Gym...", key=f"new_cat_{selected_profile}")
+        st.markdown("##### Add New Expenditure Item")
+        new_item_name = st.text_input("New Expenditure Item Name", placeholder="e.g. Insurance, Gym...", key=f"new_item_{selected_profile}")
         new_amt = st.number_input("New Amount (£)", min_value=0.0, value=0.0, step=25.0, key=f"new_amt_{selected_profile}")
 
         if st.button("➕ Add Item to Budget", key=f"add_budget_btn_{selected_profile}"):
-            if new_cat:
-                updated_budget_items.append({"category": new_cat, "amount": new_amt})
+            if new_item_name:
+                updated_budget_items.append({"item": new_item_name, "amount": new_amt})
                 st.session_state.scenarios[selected_profile]["budget_items"] = updated_budget_items
                 save_scenarios()
                 st.success("Item added!")
                 st.rerun()
             else:
-                st.warning("Please enter a category name.")
+                st.warning("Please enter an expenditure item name.")
 
         if st.button("💾 Save Budget Changes", key=f"save_budget_btn_{selected_profile}"):
             st.session_state.scenarios[selected_profile]["budget_items"] = updated_budget_items
