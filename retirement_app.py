@@ -1163,7 +1163,7 @@ with col_sec1:
 
         raw_budget_items = active_p.get("budget_items", [])
 
-        # Sorting option radio and explicit Sort Button side-by-side or stacked cleanly
+        # Sorting option and Sort Button placed outside any form so clicking it triggers an immediate rerun
         sort_col1, sort_col2 = st.columns([3, 1])
         with sort_col1:
             sort_option = st.radio(
