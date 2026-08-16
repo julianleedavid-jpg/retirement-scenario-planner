@@ -355,18 +355,18 @@ class RetirementEngine:
                     (1.0 + self.scenario.inflation_rate) ** max(0, years_since_annuity)
                 )
 
-            # Apply Lump Sum Injections
+            # Apply Lump Sum Injections / Withdrawals
             for idx, ls in enumerate(self.scenario.lump_sums):
-                if not lump_sums_applied[idx] and ls.amount > 0 and current_date >= ls.injection_date:
+                if not lump_sums_applied[idx] and ls.amount != 0 and current_date >= ls.injection_date:
                     if ls.target_pot == "SIPP":
-                        sipp += ls.amount
+                        sipp = max(0.0, sipp + ls.amount)
                     elif ls.target_pot == "Private Pension":
-                        wp_tax_free += ls.amount * 0.25
-                        wp_taxable += ls.amount * 0.75
+                        wp_tax_free = max(0.0, wp_tax_free + ls.amount * 0.25)
+                        wp_taxable = max(0.0, wp_taxable + ls.amount * 0.75)
                     elif ls.target_pot == "S&S ISA":
-                        isa += ls.amount
+                        isa = max(0.0, isa + ls.amount)
                     elif ls.target_pot == "Other Investment":
-                        other += ls.amount
+                        other = max(0.0, other + ls.amount)
                     lump_sums_applied[idx] = True
 
             # Apply Market Crash
@@ -797,21 +797,21 @@ with st.sidebar.form(key=f"scenario_form_{selected_profile}"):
             step=0.1,
         )
 
-    with st.expander("💵 Lump Sum Injections (Up to 3)", expanded=False):
+    with st.expander("💵 Lump Sum Injections / Withdrawals (Up to 3)", expanded=False):
         pot_options = ["S&S ISA", "SIPP", "Private Pension", "Other Investment"]
 
         st.markdown("##### Lump Sum 1")
-        ls1_amt = st.number_input("Lump Sum 1 Amount (£)", min_value=0.0, value=float(curr_data.get("lump_sum_1_amt", 0.0)), step=1000.0)
+        ls1_amt = st.number_input("Lump Sum 1 Amount (£)", min_value=-1000000.0, value=float(curr_data.get("lump_sum_1_amt", 0.0)), step=1000.0, help="Enter a negative amount to simulate a withdrawal.")
         ls1_date = st.date_input("Lump Sum 1 Date", value=curr_data.get("lump_sum_1_date", get_next_tax_year_start()), min_value=date.today(), format="DD/MM/YYYY")
         ls1_pot = st.selectbox("Lump Sum 1 Target Pot", options=pot_options, index=pot_options.index("Private Pension" if curr_data.get("lump_sum_1_pot") == "Workplace Pension" else curr_data.get("lump_sum_1_pot", "S&S ISA")))
 
         st.markdown("##### Lump Sum 2")
-        ls2_amt = st.number_input("Lump Sum 2 Amount (£)", min_value=0.0, value=float(curr_data.get("lump_sum_2_amt", 0.0)), step=1000.0)
+        ls2_amt = st.number_input("Lump Sum 2 Amount (£)", min_value=-1000000.0, value=float(curr_data.get("lump_sum_2_amt", 0.0)), step=1000.0, help="Enter a negative amount to simulate a withdrawal.")
         ls2_date = st.date_input("Lump Sum 2 Date", value=curr_data.get("lump_sum_2_date", get_next_tax_year_start()), min_value=date.today(), format="DD/MM/YYYY")
         ls2_pot = st.selectbox("Lump Sum 2 Target Pot", options=pot_options, index=pot_options.index("Private Pension" if curr_data.get("lump_sum_2_pot") == "Workplace Pension" else curr_data.get("lump_sum_2_pot", "S&S ISA")))
 
         st.markdown("##### Lump Sum 3")
-        ls3_amt = st.number_input("Lump Sum 3 Amount (£)", min_value=0.0, value=float(curr_data.get("lump_sum_3_amt", 0.0)), step=1000.0)
+        ls3_amt = st.number_input("Lump Sum 3 Amount (£)", min_value=-1000000.0, value=float(curr_data.get("lump_sum_3_amt", 0.0)), step=1000.0, help="Enter a negative amount to simulate a withdrawal.")
         ls3_date = st.date_input("Lump Sum 3 Date", value=curr_data.get("lump_sum_3_date", get_next_tax_year_start()), min_value=date.today(), format="DD/MM/YYYY")
         ls3_pot = st.selectbox("Lump Sum 3 Target Pot", options=pot_options, index=pot_options.index("Private Pension" if curr_data.get("lump_sum_3_pot") == "Workplace Pension" else curr_data.get("lump_sum_3_pot", "S&S ISA")))
 
