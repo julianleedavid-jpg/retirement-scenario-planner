@@ -1253,16 +1253,22 @@ with col_sec1:
             monthly_key = f"budget_amt_{selected_profile}_{item_id}"
             annual_key = f"budget_annual_{selected_profile}_{item_id}"
 
-            def sync_from_monthly(m_key=monthly_key, a_key=annual_key):
-                st.session_state[a_key] = st.session_state[m_key] * 12.0
+            def make_sync_monthly(a_k=annual_key, m_k=monthly_key):
+                def sync():
+                    if a_k in st.session_state and m_k in st.session_state:
+                        st.session_state[a_k] = st.session_state[m_k] * 12.0
+                return sync
 
-            def sync_from_annual(m_key=monthly_key, a_key=annual_key):
-                st.session_state[m_key] = st.session_state[a_key] / 12.0
+            def make_sync_annual(a_k=annual_key, m_k=monthly_key):
+                def sync():
+                    if a_k in st.session_state and m_k in st.session_state:
+                        st.session_state[m_k] = st.session_state[a_k] / 12.0
+                return sync
 
             with cols[2]:
-                amt_val = st.number_input("Monthly Amount", value=float(item.get("amount", 0.0)), step=25.0, key=monthly_key, on_change=sync_from_monthly, label_visibility="collapsed")
+                amt_val = st.number_input("Monthly Amount", value=float(item.get("amount", 0.0)), step=25.0, key=monthly_key, on_change=make_sync_monthly(), label_visibility="collapsed")
             with cols[3]:
-                annual_val = st.number_input("Annual Amount", value=float(item.get("annual_amount", item.get("amount", 0.0) * 12.0)), step=100.0, key=annual_key, on_change=sync_from_annual, label_visibility="collapsed")
+                annual_val = st.number_input("Annual Amount", value=float(item.get("annual_amount", item.get("amount", 0.0) * 12.0)), step=100.0, key=annual_key, on_change=make_sync_annual(), label_visibility="collapsed")
             with cols[4]:
                 remove_clicked = st.button("🗑️", key=f"del_budget_{selected_profile}_{item_id}")
             
