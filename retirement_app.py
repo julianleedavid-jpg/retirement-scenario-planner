@@ -6,9 +6,7 @@ from typing import List, Tuple
 import uuid
 import pandas as pd
 import streamlit as st
-
-JSON_FILE = "scenarios.json"
-
+from streamlit_gsheets import GSheetsConnection
 
 def get_next_tax_year_start(from_date: date = None) -> date:
     if from_date is None:
@@ -53,7 +51,7 @@ if not check_password():
 st.title("📈 Retirement Forecast & Drawdown Engine")
 
 # ----------------------------------------------------------------------
-# 1. JSON Persistence & Default Scenarios
+# 1. Google Sheets Persistence & Default Scenarios
 # ----------------------------------------------------------------------
 
 DEFAULT_PROFILES = {
@@ -88,13 +86,13 @@ DEFAULT_PROFILES = {
         "inflate_annuity_to_start": False,
         "lump_sum_1_amt": 0.0,
         "lump_sum_1_date": get_next_tax_year_start(),
-        "lump_sum_1_pot": "Stocks & Shares ISA",
+        "lump_sum_1_pot": "S&S ISA",
         "lump_sum_2_amt": 0.0,
         "lump_sum_2_date": get_next_tax_year_start(),
-        "lump_sum_2_pot": "Stocks & Shares ISA",
+        "lump_sum_2_pot": "S&S ISA",
         "lump_sum_3_amt": 0.0,
         "lump_sum_3_date": get_next_tax_year_start(),
-        "lump_sum_3_pot": "Stocks & Shares ISA",
+        "lump_sum_3_pot": "S&S ISA",
         "crash_pct": 0.0,
         "crash_date": get_next_tax_year_start(),
         "view_mode": "Tax Year",
@@ -138,13 +136,13 @@ DEFAULT_PROFILES = {
         "inflate_annuity_to_start": False,
         "lump_sum_1_amt": 0.0,
         "lump_sum_1_date": get_next_tax_year_start(),
-        "lump_sum_1_pot": "Stocks & Shares ISA",
+        "lump_sum_1_pot": "S&S ISA",
         "lump_sum_2_amt": 0.0,
         "lump_sum_2_date": get_next_tax_year_start(),
-        "lump_sum_2_pot": "Stocks & Shares ISA",
+        "lump_sum_2_pot": "S&S ISA",
         "lump_sum_3_amt": 0.0,
         "lump_sum_3_date": get_next_tax_year_start(),
-        "lump_sum_3_pot": "Stocks & Shares ISA",
+        "lump_sum_3_pot": "S&S ISA",
         "crash_pct": 0.0,
         "crash_date": get_next_tax_year_start(),
         "view_mode": "Tax Year",
@@ -185,17 +183,6 @@ def deserialize_scenario(scen_dict: dict) -> dict:
                 deserialized[k] = v
         else:
             deserialized[k] = v
-            
-    # Automatically upgrade legacy pot names from old JSON saves
-    legacy_pot_names = {
-        "Workplace Pension": "Private Pension", 
-        "S&S ISA": "Stocks & Shares ISA"
-    }
-    for i in [1, 2, 3]:
-        pot_key = f"lump_sum_{i}_pot"
-        if pot_key in deserialized:
-            deserialized[pot_key] = legacy_pot_names.get(deserialized[pot_key], deserialized[pot_key])
-
     if "budget_items" not in deserialized:
         deserialized["budget_items"] = []
     else:
@@ -213,24 +200,41 @@ def deserialize_scenario(scen_dict: dict) -> dict:
 
 def load_scenarios() -> dict:
     scenarios = {k: v.copy() for k, v in DEFAULT_PROFILES.items()}
-    if os.path.exists(JSON_FILE):
-        try:
-            with open(JSON_FILE, "r") as f:
-                data = json.load(f)
-            loaded = {name: deserialize_scenario(scen) for name, scen in data.items()}
+    
+    try:
+        conn = st.connection("gsheets", type=GSheetsConnection)
+        df = conn.read(worksheet="Sheet1", usecols=[0, 1])
+        
+        if not df.empty:
+            loaded = {}
+            for index, row in df.iterrows():
+                if pd.notna(row.get("Profile")) and pd.notna(row.get("JSON_Data")):
+                    profile_name = str(row["Profile"])
+                    json_string = str(row["JSON_Data"])
+                    scen_dict = json.loads(json_string)
+                    loaded[profile_name] = deserialize_scenario(scen_dict)
             scenarios.update(loaded)
-        except Exception:
-            pass
+    except Exception as e:
+        # Fails silently and defaults back to DEFAULT_PROFILES if connection isn't set up yet
+        pass
+        
     return scenarios
 
 
 def save_scenarios():
-    data = {
-        name: serialize_scenario(scen)
-        for name, scen in st.session_state.scenarios.items()
-    }
-    with open(JSON_FILE, "w") as f:
-        json.dump(data, f, indent=4)
+    rows = []
+    for name, scen in st.session_state.scenarios.items():
+        serialized_scen = serialize_scenario(scen)
+        json_string = json.dumps(serialized_scen)
+        rows.append({"Profile": name, "JSON_Data": json_string})
+    
+    df = pd.DataFrame(rows)
+    
+    try:
+        conn = st.connection("gsheets", type=GSheetsConnection)
+        conn.update(worksheet="Sheet1", data=df)
+    except Exception as e:
+        st.error(f"Failed to save to Google Sheets: {e}")
 
 
 # Initialize Session State
@@ -256,7 +260,7 @@ class PotConfig:
 class LumpSum:
     amount: float = 0.0
     injection_date: date = field(default_factory=get_next_tax_year_start)
-    target_pot: str = "Stocks & Shares ISA"
+    target_pot: str = "S&S ISA"
 
 
 @dataclass
@@ -403,7 +407,7 @@ class RetirementEngine:
                         elif ls.target_pot == "Private Pension":
                             wp_tax_free += ls.amount * 0.25
                             wp_taxable += ls.amount * 0.75
-                        elif ls.target_pot == "Stocks & Shares ISA":
+                        elif ls.target_pot == "S&S ISA":
                             isa += ls.amount
                         elif ls.target_pot == "Other Investment":
                             other += ls.amount
@@ -441,7 +445,7 @@ class RetirementEngine:
                                 other, rem_withdrawal = draw_from_pot(other, rem_withdrawal)
                             if rem_withdrawal > 0:
                                 sipp, rem_withdrawal = draw_from_pot(sipp, rem_withdrawal)
-                        elif ls.target_pot == "Stocks & Shares ISA":
+                        elif ls.target_pot == "S&S ISA":
                             isa, rem_withdrawal = draw_from_pot(isa, rem_withdrawal)
 
                     lump_sums_applied[idx] = True
@@ -864,25 +868,22 @@ with st.sidebar.form(key=f"scenario_form_{selected_profile}"):
         )
 
     with st.expander("💵 Lump Sum Injections / Withdrawals (Up to 3)", expanded=False):
-        pot_options = ["Stocks & Shares ISA", "SIPP", "Private Pension", "Other Investment"]
-
-        def get_pot_index(saved_pot):
-            return pot_options.index(saved_pot) if saved_pot in pot_options else 0
+        pot_options = ["S&S ISA", "SIPP", "Private Pension", "Other Investment"]
 
         st.markdown("##### Lump Sum 1")
         ls1_amt = st.number_input("Lump Sum 1 Amount (£)", min_value=-1000000.0, value=float(curr_data.get("lump_sum_1_amt", 0.0)), step=1000.0, help="Enter a negative amount to simulate a withdrawal.")
         ls1_date = st.date_input("Lump Sum 1 Date", value=curr_data.get("lump_sum_1_date", get_next_tax_year_start()), min_value=date.today(), format="DD/MM/YYYY")
-        ls1_pot = st.selectbox("Lump Sum 1 Target Pot", options=pot_options, index=get_pot_index(curr_data.get("lump_sum_1_pot", "Stocks & Shares ISA")))
+        ls1_pot = st.selectbox("Lump Sum 1 Target Pot", options=pot_options, index=pot_options.index("Private Pension" if curr_data.get("lump_sum_1_pot") == "Workplace Pension" else curr_data.get("lump_sum_1_pot", "S&S ISA")))
 
         st.markdown("##### Lump Sum 2")
         ls2_amt = st.number_input("Lump Sum 2 Amount (£)", min_value=-1000000.0, value=float(curr_data.get("lump_sum_2_amt", 0.0)), step=1000.0, help="Enter a negative amount to simulate a withdrawal.")
         ls2_date = st.date_input("Lump Sum 2 Date", value=curr_data.get("lump_sum_2_date", get_next_tax_year_start()), min_value=date.today(), format="DD/MM/YYYY")
-        ls2_pot = st.selectbox("Lump Sum 2 Target Pot", options=pot_options, index=get_pot_index(curr_data.get("lump_sum_2_pot", "Stocks & Shares ISA")))
+        ls2_pot = st.selectbox("Lump Sum 2 Target Pot", options=pot_options, index=pot_options.index("Private Pension" if curr_data.get("lump_sum_2_pot") == "Workplace Pension" else curr_data.get("lump_sum_2_pot", "S&S ISA")))
 
         st.markdown("##### Lump Sum 3")
         ls3_amt = st.number_input("Lump Sum 3 Amount (£)", min_value=-1000000.0, value=float(curr_data.get("lump_sum_3_amt", 0.0)), step=1000.0, help="Enter a negative amount to simulate a withdrawal.")
         ls3_date = st.date_input("Lump Sum 3 Date", value=curr_data.get("lump_sum_3_date", get_next_tax_year_start()), min_value=date.today(), format="DD/MM/YYYY")
-        ls3_pot = st.selectbox("Lump Sum 3 Target Pot", options=pot_options, index=get_pot_index(curr_data.get("lump_sum_3_pot", "Stocks & Shares ISA")))
+        ls3_pot = st.selectbox("Lump Sum 3 Target Pot", options=pot_options, index=pot_options.index("Private Pension" if curr_data.get("lump_sum_3_pot") == "Workplace Pension" else curr_data.get("lump_sum_3_pot", "S&S ISA")))
 
     try:
         max_crash_date = date(dob.year + 100, dob.month, dob.day)
@@ -941,8 +942,8 @@ with st.sidebar.form(key=f"scenario_form_{selected_profile}"):
 
         st.markdown("##### Stocks & Shares ISA")
         isa_bal = st.number_input("Stocks & Shares ISA (£)", value=float(curr_data["isa_bal"]), step=5000.0)
-        isa_ret = st.slider("Stocks & Shares ISA Annual Return (%)", 0.0, 15.0, float(curr_data.get("isa_ret", 7.0)))
-        isa_contrib = st.number_input("Stocks & Shares ISA Monthly Contribution (£)", value=float(curr_data.get("isa_contrib", 0.0)), step=50.0)
+        isa_ret = st.slider("ISA Annual Return (%)", 0.0, 15.0, float(curr_data.get("isa_ret", 7.0)))
+        isa_contrib = st.number_input("ISA Monthly Contribution (£)", value=float(curr_data.get("isa_contrib", 0.0)), step=50.0)
 
         st.markdown("##### Other Investment")
         other_bal = st.number_input("Other Investment (£)", value=float(curr_data["other_bal"]), step=5000.0)
@@ -1020,17 +1021,17 @@ lump_sums_list = [
     LumpSum(
         amount=active_p.get("lump_sum_1_amt", 0.0),
         injection_date=active_p.get("lump_sum_1_date", get_next_tax_year_start()),
-        target_pot=active_p.get("lump_sum_1_pot", "Stocks & Shares ISA"),
+        target_pot="Private Pension" if active_p.get("lump_sum_1_pot") == "Workplace Pension" else active_p.get("lump_sum_1_pot", "S&S ISA"),
     ),
     LumpSum(
         amount=active_p.get("lump_sum_2_amt", 0.0),
         injection_date=active_p.get("lump_sum_2_date", get_next_tax_year_start()),
-        target_pot=active_p.get("lump_sum_2_pot", "Stocks & Shares ISA"),
+        target_pot="Private Pension" if active_p.get("lump_sum_2_pot") == "Workplace Pension" else active_p.get("lump_sum_2_pot", "S&S ISA"),
     ),
     LumpSum(
         amount=active_p.get("lump_sum_3_amt", 0.0),
         injection_date=active_p.get("lump_sum_3_date", get_next_tax_year_start()),
-        target_pot=active_p.get("lump_sum_3_pot", "Stocks & Shares ISA"),
+        target_pot="Private Pension" if active_p.get("lump_sum_3_pot") == "Workplace Pension" else active_p.get("lump_sum_3_pot", "S&S ISA"),
     ),
 ]
 
@@ -1141,7 +1142,7 @@ table_column_config = {
     "desired_annual_income": st.column_config.NumberColumn("Desired Annual Income", format="£%,d"),
     "sipp": st.column_config.NumberColumn("SIPP", format="£%,d"),
     "private_pension": st.column_config.NumberColumn("Private Pension", format="£%,d"),
-    "isa": st.column_config.NumberColumn("Stocks & Shares ISA", format="£%,d"),
+    "isa": st.column_config.NumberColumn("S&S ISA", format="£%,d"),
     "other_investment": st.column_config.NumberColumn("Other Investment", format="£%,d"),
     "total_portfolio": st.column_config.NumberColumn("Total Portfolio", format="£%,d"),
     "annuity_income": st.column_config.NumberColumn("Annuity Income (Annual)", format="£%,d"),
@@ -1378,18 +1379,18 @@ with col_notes1:
         1. **Guaranteed Income First (Annuity & State Pension):**
            * **Annuities / DB Pension:** Annual pension annuity payments are applied first and increase with inflation after Year 1.
            * **State Pension:** Applied automatically once you reach your configured State Pension age, escalating annually by your growth input.
-           * **Excess Income Recycling:** If guaranteed income exceeds your target inflation-adjusted monthly income, the surplus is automatically deposited into your **Stocks & Shares ISA** (up to the **£20,000/year** limit), with any remaining excess directed to **Other Investments**.
+           * **Excess Income Recycling:** If guaranteed income exceeds your target inflation-adjusted monthly income, the surplus is automatically deposited into your **S&S ISA** (up to the **£20,000/year** limit), with any remaining excess directed to **Other Investments**.
 
         2. **Market Stress Buffer Strategy (> 5% Crash Trigger):**
            * If a market crash of **> 5%** occurs (configurable at any age up to 100), the engine enters a **2-year recovery window**.
-           * During recovery, equity pots (**SIPP**, **Private Pension**, **Stocks & Shares ISA**) are protected from panic sell-offs.
+           * During recovery, equity pots (**SIPP**, **Private Pension**, **ISA**) are protected from panic sell-offs.
            * **Income Reduction Rule:** Your target monthly income is automatically reduced to match the **State Pension amount** calculated at the date of the crash.
            * **Post-Recovery:** After the 2-year window expires, your desired monthly income resumes at its full inflation-adjusted level.
 
         3. **Standard Tax-Optimized Drawdown Hierarchy:**
            When guaranteed income is insufficient, the required shortfall is satisfied using the following priority order:
            * **Priority 1 (Personal Allowance Utilization):** Draws taxable pensions (**SIPP** and **75% Private Pension**) up to the remaining UK Personal Allowance threshold (**£12,570/year**) to receive income **100% tax-free**.
-           * **Priority 2 (Tax-Free Stocks & Shares ISA Capital):** Draws from **Stocks & Shares ISA** to fulfill remaining income needs without incurring income tax.
+           * **Priority 2 (Tax-Free ISA Capital):** Draws from **S&S ISA** to fulfill remaining income needs without incurring income tax.
            * **Priority 3 (Tax-Free Pension Capital):** Draws from the tax-free portion (**25% Private Pension**).
            * **Priority 4 (Basic Rate Taxable Pensions):** Draws taxable pensions above the Personal Allowance, applying basic-rate income tax (**20%**) to calculate gross withdrawals.
            * **Priority 5 (Other Investments Fallback):** Draws remaining needs from non-registered/taxable investments.
