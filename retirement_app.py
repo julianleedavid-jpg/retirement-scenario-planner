@@ -203,7 +203,7 @@ def load_scenarios() -> dict:
     
     try:
         conn = st.connection("gsheets", type=GSheetsConnection)
-        df = conn.read(worksheet="Sheet1", usecols=[0, 1])
+        df = conn.read(worksheet="Sheet1", usecols=[0, 1], ttl=0)
         
         if not df.empty:
             loaded = {}
@@ -215,13 +215,11 @@ def load_scenarios() -> dict:
                     loaded[profile_name] = deserialize_scenario(scen_dict)
             scenarios.update(loaded)
     except Exception as e:
-        # Fails silently and defaults back to DEFAULT_PROFILES if connection isn't set up yet
         pass
         
     return scenarios
 
 
-Python
 def save_scenarios():
     rows = []
     for name, scen in st.session_state.scenarios.items():
@@ -233,14 +231,10 @@ def save_scenarios():
     
     try:
         conn = st.connection("gsheets", type=GSheetsConnection)
-        # Push the data to the Google Sheet
         conn.update(worksheet="Sheet1", data=df)
-        # Force Streamlit to forget the old cached data
         st.cache_data.clear()
     except Exception as e:
-        # Print the exact error Google returns
         st.error(f"Failed to save to Google Sheets: {e}")
-        # Freeze the app immediately so the page doesn't refresh
         st.stop()
 
 
