@@ -221,6 +221,7 @@ def load_scenarios() -> dict:
     return scenarios
 
 
+Python
 def save_scenarios():
     rows = []
     for name, scen in st.session_state.scenarios.items():
@@ -232,9 +233,15 @@ def save_scenarios():
     
     try:
         conn = st.connection("gsheets", type=GSheetsConnection)
+        # Push the data to the Google Sheet
         conn.update(worksheet="Sheet1", data=df)
+        # Force Streamlit to forget the old cached data
+        st.cache_data.clear()
     except Exception as e:
+        # Print the exact error Google returns
         st.error(f"Failed to save to Google Sheets: {e}")
+        # Freeze the app immediately so the page doesn't refresh
+        st.stop()
 
 
 # Initialize Session State
