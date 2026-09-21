@@ -1181,22 +1181,22 @@ with st.sidebar.form(key=f"scenario_form_{selected_profile}"):
     with st.expander("💰 Pot Balances, Returns & Contributions", expanded=False):
         st.markdown("##### SIPP")
         sipp_bal = st.number_input("SIPP Pot Balance (£)", value=float(curr_data["sipp_bal"]), step=5000.0)
-        sipp_ret = st.slider("SIPP Annual Return (%)", 0.0, 15.0, float(curr_data.get("sipp_ret", 7.0)))
+        sipp_ret = st.number_input("SIPP Annual Return (%)", min_value=-50.0, max_value=50.0, value=float(curr_data.get("sipp_ret", 7.0)), step=0.1)
         sipp_contrib = st.number_input("SIPP Monthly Contribution (£)", value=float(curr_data.get("sipp_contrib", 500.0)), step=50.0)
 
         st.markdown("##### Private Pension")
         wp_bal = st.number_input("Private Pension Total (£)", value=float(curr_data["wp_bal"]), step=5000.0)
-        wp_ret = st.slider("Private Pension Return (%)", 0.0, 15.0, float(curr_data.get("wp_ret", 7.0)))
+        wp_ret = st.number_input("Private Pension Return (%)", min_value=-50.0, max_value=50.0, value=float(curr_data.get("wp_ret", 7.0)), step=0.1)
         wp_contrib = st.number_input("Private Pension Monthly Contribution (£)", value=float(curr_data.get("wp_contrib", 700.0)), step=50.0)
 
         st.markdown("##### Stocks & Shares ISA")
         isa_bal = st.number_input("Stocks & Shares ISA (£)", value=float(curr_data["isa_bal"]), step=5000.0)
-        isa_ret = st.slider("ISA Annual Return (%)", 0.0, 15.0, float(curr_data.get("isa_ret", 7.0)))
+        isa_ret = st.number_input("ISA Annual Return (%)", min_value=-50.0, max_value=50.0, value=float(curr_data.get("isa_ret", 7.0)), step=0.1)
         isa_contrib = st.number_input("ISA Monthly Contribution (£)", value=float(curr_data.get("isa_contrib", 0.0)), step=50.0)
 
         st.markdown("##### Other Investment")
         other_bal = st.number_input("Other Investment (£)", value=float(curr_data["other_bal"]), step=5000.0)
-        other_ret = st.slider("Other Return (%)", 0.0, 15.0, float(curr_data.get("other_ret", 3.0)))
+        other_ret = st.number_input("Other Return (%)", min_value=-50.0, max_value=50.0, value=float(curr_data.get("other_ret", 3.0)), step=0.1)
         other_contrib = st.number_input("Other Monthly Contribution (£)", value=float(curr_data.get("other_contrib", 0.0)), step=50.0)
 
     with st.expander("👁️ Display View", expanded=False):
