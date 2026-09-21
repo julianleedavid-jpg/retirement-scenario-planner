@@ -611,7 +611,7 @@ class RetirementEngine:
                     lump_sums_applied[idx] = True
 
             # Gilt / Bond Events Handler
-            daily_gilt_coupon = 0.0
+            daily_gilt_income = 0.0
             if current_date in gilt_events_map:
                 for ev_type, amt, target_pot in gilt_events_map[current_date]:
                     if ev_type == "purchase":
@@ -628,8 +628,8 @@ class RetirementEngine:
                         elif target_pot == "Other Investment":
                             other = max(0.0, other - rem_cost)
                     elif ev_type in ("coupon", "maturity"):
-                        if ev_type == "coupon":
-                            daily_gilt_coupon += amt
+                        if ev_type in ("coupon", "maturity"):
+                            daily_gilt_income += amt
                         if target_pot == "SIPP":
                             sipp += amt
                         elif target_pot == "Private Pension":
@@ -861,6 +861,9 @@ class RetirementEngine:
             total_portfolio = (sipp + wp_taxable + wp_tax_free + isa + other) - cumulative_deficit
             total_monthly_income = monthly_drawn_from_pots + state_pension_monthly + annuity_monthly
 
+            # Investment Income totals all income from pots (gilt coupons/maturities + pot drawdowns)
+            total_daily_investment_income = daily_gilt_income + monthly_drawn_from_pots
+
             daily_records.append({
                 "date": current_date,
                 "tax_year": current_tax_year,
@@ -875,7 +878,7 @@ class RetirementEngine:
                 "workplace_taxable": int(round(wp_taxable)),
                 "isa": int(round(isa)),
                 "other_investment": int(round(other)),
-                "gilt_annual_income": int(round(daily_gilt_coupon)),
+                "investment_income": int(round(total_daily_investment_income)),
                 "total_portfolio": int(round(total_portfolio)),
                 "annuity_income": int(round(current_annual_annuity if is_retired else 0.0)),
                 "state_pension_income": int(round(state_pension_monthly)),
@@ -900,7 +903,7 @@ class RetirementEngine:
                 "private_pension": "last",
                 "isa": "last",
                 "other_investment": "last",
-                "gilt_annual_income": "sum",
+                "investment_income": "sum",
                 "total_portfolio": "last",
                 "annuity_income": "last",
                 "state_pension_income": "sum",
@@ -924,7 +927,7 @@ class RetirementEngine:
                 "private_pension": "last",
                 "isa": "last",
                 "other_investment": "last",
-                "gilt_annual_income": "sum",
+                "investment_income": "sum",
                 "total_portfolio": "last",
                 "annuity_income": "last",
                 "state_pension_income": "sum",
@@ -944,7 +947,7 @@ class RetirementEngine:
             "private_pension",
             "isa",
             "other_investment",
-            "gilt_annual_income",
+            "investment_income",
             "total_portfolio",
             "annuity_income",
             "state_pension_income",
@@ -1454,7 +1457,7 @@ st.subheader("📊 Portfolio Trajectory & Drawdown Forecast")
 st.line_chart(
     active_df,
     x=x_col,
-    y=["sipp", "private_pension", "isa", "other_investment", "gilt_annual_income", "total_portfolio", "desired_annual_income"],
+    y=["sipp", "private_pension", "isa", "other_investment", "investment_income", "total_portfolio", "desired_annual_income"],
 )
 
 st.subheader("📋 Balances and Drawdown Table (Up to Age 100)")
@@ -1466,7 +1469,7 @@ table_column_config = {
     "private_pension": st.column_config.NumberColumn("Private Pension", format="£%,d"),
     "isa": st.column_config.NumberColumn("S&S ISA", format="£%,d"),
     "other_investment": st.column_config.NumberColumn("Other Investment", format="£%,d"),
-    "gilt_annual_income": st.column_config.NumberColumn("Gilt Income (Annual)", format="£%,d"),
+    "investment_income": st.column_config.NumberColumn("Investment Income", format="£%,d"),
     "total_portfolio": st.column_config.NumberColumn("Total Portfolio", format="£%,d"),
     "annuity_income": st.column_config.NumberColumn("Annuity Income (Annual)", format="£%,d"),
     "state_pension_income": st.column_config.NumberColumn("State Pension Income", format="£%,d"),
