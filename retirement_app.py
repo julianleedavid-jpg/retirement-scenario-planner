@@ -100,31 +100,31 @@ DEFAULT_PROFILES = {
         "gilt_1_p_date": get_next_tax_year_start(),
         "gilt_1_m_date": get_next_tax_year_start(),
         "gilt_1_pot": "S&S ISA",
-        "gilt_1_coupon": 0.0,
+        "gilt_1_coupon_pct": 0.0,
         "gilt_2_amt": 0.0,
         "gilt_2_price": 100.0,
         "gilt_2_p_date": get_next_tax_year_start(),
         "gilt_2_m_date": get_next_tax_year_start(),
         "gilt_2_pot": "S&S ISA",
-        "gilt_2_coupon": 0.0,
+        "gilt_2_coupon_pct": 0.0,
         "gilt_3_amt": 0.0,
         "gilt_3_price": 100.0,
         "gilt_3_p_date": get_next_tax_year_start(),
         "gilt_3_m_date": get_next_tax_year_start(),
         "gilt_3_pot": "S&S ISA",
-        "gilt_3_coupon": 0.0,
+        "gilt_3_coupon_pct": 0.0,
         "gilt_4_amt": 0.0,
         "gilt_4_price": 100.0,
         "gilt_4_p_date": get_next_tax_year_start(),
         "gilt_4_m_date": get_next_tax_year_start(),
         "gilt_4_pot": "S&S ISA",
-        "gilt_4_coupon": 0.0,
+        "gilt_4_coupon_pct": 0.0,
         "gilt_5_amt": 0.0,
         "gilt_5_price": 100.0,
         "gilt_5_p_date": get_next_tax_year_start(),
         "gilt_5_m_date": get_next_tax_year_start(),
         "gilt_5_pot": "S&S ISA",
-        "gilt_5_coupon": 0.0,
+        "gilt_5_coupon_pct": 0.0,
         "crash_pct": 0.0,
         "crash_date": get_next_tax_year_start(),
         "view_mode": "Tax Year",
@@ -181,31 +181,31 @@ DEFAULT_PROFILES = {
         "gilt_1_p_date": get_next_tax_year_start(),
         "gilt_1_m_date": get_next_tax_year_start(),
         "gilt_1_pot": "S&S ISA",
-        "gilt_1_coupon": 0.0,
+        "gilt_1_coupon_pct": 0.0,
         "gilt_2_amt": 0.0,
         "gilt_2_price": 100.0,
         "gilt_2_p_date": get_next_tax_year_start(),
         "gilt_2_m_date": get_next_tax_year_start(),
         "gilt_2_pot": "S&S ISA",
-        "gilt_2_coupon": 0.0,
+        "gilt_2_coupon_pct": 0.0,
         "gilt_3_amt": 0.0,
         "gilt_3_price": 100.0,
         "gilt_3_p_date": get_next_tax_year_start(),
         "gilt_3_m_date": get_next_tax_year_start(),
         "gilt_3_pot": "S&S ISA",
-        "gilt_3_coupon": 0.0,
+        "gilt_3_coupon_pct": 0.0,
         "gilt_4_amt": 0.0,
         "gilt_4_price": 100.0,
         "gilt_4_p_date": get_next_tax_year_start(),
         "gilt_4_m_date": get_next_tax_year_start(),
         "gilt_4_pot": "S&S ISA",
-        "gilt_4_coupon": 0.0,
+        "gilt_4_coupon_pct": 0.0,
         "gilt_5_amt": 0.0,
         "gilt_5_price": 100.0,
         "gilt_5_p_date": get_next_tax_year_start(),
         "gilt_5_m_date": get_next_tax_year_start(),
         "gilt_5_pot": "S&S ISA",
-        "gilt_5_coupon": 0.0,
+        "gilt_5_coupon_pct": 0.0,
         "crash_pct": 0.0,
         "crash_date": get_next_tax_year_start(),
         "view_mode": "Tax Year",
@@ -246,6 +246,28 @@ def deserialize_scenario(scen_dict: dict) -> dict:
                 deserialized[k] = v
         else:
             deserialized[k] = v
+    # Backward compatibility migration for old coupon keys
+    if "gilt_1_coupon" in deserialized and "gilt_1_coupon_pct" not in deserialized:
+        amt = deserialized.get("gilt_1_amt", 0.0)
+        c_val = deserialized.pop("gilt_1_coupon")
+        deserialized["gilt_1_coupon_pct"] = (c_val / amt * 100.0) if amt > 0 else 0.0
+    if "gilt_2_coupon" in deserialized and "gilt_2_coupon_pct" not in deserialized:
+        amt = deserialized.get("gilt_2_amt", 0.0)
+        c_val = deserialized.pop("gilt_2_coupon")
+        deserialized["gilt_2_coupon_pct"] = (c_val / amt * 100.0) if amt > 0 else 0.0
+    if "gilt_3_coupon" in deserialized and "gilt_3_coupon_pct" not in deserialized:
+        amt = deserialized.get("gilt_3_amt", 0.0)
+        c_val = deserialized.pop("gilt_3_coupon")
+        deserialized["gilt_3_coupon_pct"] = (c_val / amt * 100.0) if amt > 0 else 0.0
+    if "gilt_4_coupon" in deserialized and "gilt_4_coupon_pct" not in deserialized:
+        amt = deserialized.get("gilt_4_amt", 0.0)
+        c_val = deserialized.pop("gilt_4_coupon")
+        deserialized["gilt_4_coupon_pct"] = (c_val / amt * 100.0) if amt > 0 else 0.0
+    if "gilt_5_coupon" in deserialized and "gilt_5_coupon_pct" not in deserialized:
+        amt = deserialized.get("gilt_5_amt", 0.0)
+        c_val = deserialized.pop("gilt_5_coupon")
+        deserialized["gilt_5_coupon_pct"] = (c_val / amt * 100.0) if amt > 0 else 0.0
+
     if "budget_items" not in deserialized:
         deserialized["budget_items"] = []
     else:
@@ -334,7 +356,7 @@ class GiltBond:
     purchase_date: date = field(default_factory=get_next_tax_year_start)
     maturity_date: date = field(default_factory=get_next_tax_year_start)
     target_pot: str = "S&S ISA"
-    coupon_amount: float = 0.0
+    coupon_pct: float = 0.0
 
 
 @dataclass
@@ -447,7 +469,8 @@ class RetirementEngine:
             events_map.setdefault(gilt.maturity_date, []).append(("maturity", gilt.amount, gilt.target_pot))
             
             # 3. Semi-Annual Pro-Rata Coupons working backwards from maturity date
-            if gilt.coupon_amount > 0:
+            annual_coupon_cash = gilt.amount * (gilt.coupon_pct / 100.0)
+            if annual_coupon_cash > 0:
                 curr = gilt.maturity_date
                 coupon_dates = []
                 while curr > gilt.purchase_date:
@@ -471,7 +494,7 @@ class RetirementEngine:
                     
                     if period_total_days > 0 and held_days > 0:
                         fraction = held_days / period_total_days
-                        coupon_payment = (gilt.coupon_amount / 2.0) * fraction
+                        coupon_payment = (annual_coupon_cash / 2.0) * fraction
                         events_map.setdefault(pay_date, []).append(("coupon", coupon_payment, gilt.target_pot))
                         
         return events_map
@@ -1065,7 +1088,7 @@ with st.sidebar.form(key=f"scenario_form_{selected_profile}"):
         g1_p_date = st.date_input("Gilt 1 Purchase Date", value=curr_data.get("gilt_1_p_date", get_next_tax_year_start()), min_value=date.today(), max_value=max_gilt_maturity, format="DD/MM/YYYY")
         g1_m_date = st.date_input("Gilt 1 Maturity Date", value=curr_data.get("gilt_1_m_date", get_next_tax_year_start()), min_value=date.today(), max_value=max_gilt_maturity, format="DD/MM/YYYY")
         g1_pot = st.selectbox("Gilt 1 Source/Target Pot", options=pot_options, index=pot_options.index(curr_data.get("gilt_1_pot", "S&S ISA")), key="g1_pot_sel")
-        g1_coupon = st.number_input("Gilt 1 Annual Coupon / Interest (£)", min_value=0.0, value=float(curr_data.get("gilt_1_coupon", 0.0)), step=100.0)
+        g1_coupon_pct = st.number_input("Gilt 1 Annual Coupon / Interest (%)", min_value=0.0, max_value=30.0, value=float(curr_data.get("gilt_1_coupon_pct", 0.0)), step=0.1)
 
         st.markdown("##### Gilt / Bond 2")
         g2_amt = st.number_input("Gilt 2 Nominal Amount (£)", min_value=0.0, value=float(curr_data.get("gilt_2_amt", 0.0)), step=1000.0)
@@ -1073,7 +1096,7 @@ with st.sidebar.form(key=f"scenario_form_{selected_profile}"):
         g2_p_date = st.date_input("Gilt 2 Purchase Date", value=curr_data.get("gilt_2_p_date", get_next_tax_year_start()), min_value=date.today(), max_value=max_gilt_maturity, format="DD/MM/YYYY")
         g2_m_date = st.date_input("Gilt 2 Maturity Date", value=curr_data.get("gilt_2_m_date", get_next_tax_year_start()), min_value=date.today(), max_value=max_gilt_maturity, format="DD/MM/YYYY")
         g2_pot = st.selectbox("Gilt 2 Source/Target Pot", options=pot_options, index=pot_options.index(curr_data.get("gilt_2_pot", "S&S ISA")), key="g2_pot_sel")
-        g2_coupon = st.number_input("Gilt 2 Annual Coupon / Interest (£)", min_value=0.0, value=float(curr_data.get("gilt_2_coupon", 0.0)), step=100.0)
+        g2_coupon_pct = st.number_input("Gilt 2 Annual Coupon / Interest (%)", min_value=0.0, max_value=30.0, value=float(curr_data.get("gilt_2_coupon_pct", 0.0)), step=0.1)
 
         st.markdown("##### Gilt / Bond 3")
         g3_amt = st.number_input("Gilt 3 Nominal Amount (£)", min_value=0.0, value=float(curr_data.get("gilt_3_amt", 0.0)), step=1000.0)
@@ -1081,7 +1104,7 @@ with st.sidebar.form(key=f"scenario_form_{selected_profile}"):
         g3_p_date = st.date_input("Gilt 3 Purchase Date", value=curr_data.get("gilt_3_p_date", get_next_tax_year_start()), min_value=date.today(), max_value=max_gilt_maturity, format="DD/MM/YYYY")
         g3_m_date = st.date_input("Gilt 3 Maturity Date", value=curr_data.get("gilt_3_m_date", get_next_tax_year_start()), min_value=date.today(), max_value=max_gilt_maturity, format="DD/MM/YYYY")
         g3_pot = st.selectbox("Gilt 3 Source/Target Pot", options=pot_options, index=pot_options.index(curr_data.get("gilt_3_pot", "S&S ISA")), key="g3_pot_sel")
-        g3_coupon = st.number_input("Gilt 3 Annual Coupon / Interest (£)", min_value=0.0, value=float(curr_data.get("gilt_3_coupon", 0.0)), step=100.0)
+        g3_coupon_pct = st.number_input("Gilt 3 Annual Coupon / Interest (%)", min_value=0.0, max_value=30.0, value=float(curr_data.get("gilt_3_coupon_pct", 0.0)), step=0.1)
 
         st.markdown("##### Gilt / Bond 4")
         g4_amt = st.number_input("Gilt 4 Nominal Amount (£)", min_value=0.0, value=float(curr_data.get("gilt_4_amt", 0.0)), step=1000.0)
@@ -1089,7 +1112,7 @@ with st.sidebar.form(key=f"scenario_form_{selected_profile}"):
         g4_p_date = st.date_input("Gilt 4 Purchase Date", value=curr_data.get("gilt_4_p_date", get_next_tax_year_start()), min_value=date.today(), max_value=max_gilt_maturity, format="DD/MM/YYYY")
         g4_m_date = st.date_input("Gilt 4 Maturity Date", value=curr_data.get("gilt_4_m_date", get_next_tax_year_start()), min_value=date.today(), max_value=max_gilt_maturity, format="DD/MM/YYYY")
         g4_pot = st.selectbox("Gilt 4 Source/Target Pot", options=pot_options, index=pot_options.index(curr_data.get("gilt_4_pot", "S&S ISA")), key="g4_pot_sel")
-        g4_coupon = st.number_input("Gilt 4 Annual Coupon / Interest (£)", min_value=0.0, value=float(curr_data.get("gilt_4_coupon", 0.0)), step=100.0)
+        g4_coupon_pct = st.number_input("Gilt 4 Annual Coupon / Interest (%)", min_value=0.0, max_value=30.0, value=float(curr_data.get("gilt_4_coupon_pct", 0.0)), step=0.1)
 
         st.markdown("##### Gilt / Bond 5")
         g5_amt = st.number_input("Gilt 5 Nominal Amount (£)", min_value=0.0, value=float(curr_data.get("gilt_5_amt", 0.0)), step=1000.0)
@@ -1097,7 +1120,7 @@ with st.sidebar.form(key=f"scenario_form_{selected_profile}"):
         g5_p_date = st.date_input("Gilt 5 Purchase Date", value=curr_data.get("gilt_5_p_date", get_next_tax_year_start()), min_value=date.today(), max_value=max_gilt_maturity, format="DD/MM/YYYY")
         g5_m_date = st.date_input("Gilt 5 Maturity Date", value=curr_data.get("gilt_5_m_date", get_next_tax_year_start()), min_value=date.today(), max_value=max_gilt_maturity, format="DD/MM/YYYY")
         g5_pot = st.selectbox("Gilt 5 Source/Target Pot", options=pot_options, index=pot_options.index(curr_data.get("gilt_5_pot", "S&S ISA")), key="g5_pot_sel")
-        g5_coupon = st.number_input("Gilt 5 Annual Coupon / Interest (£)", min_value=0.0, value=float(curr_data.get("gilt_5_coupon", 0.0)), step=100.0)
+        g5_coupon_pct = st.number_input("Gilt 5 Annual Coupon / Interest (%)", min_value=0.0, max_value=30.0, value=float(curr_data.get("gilt_5_coupon_pct", 0.0)), step=0.1)
 
     try:
         max_crash_date = date(dob.year + 100, dob.month, dob.day)
@@ -1208,31 +1231,31 @@ with st.sidebar.form(key=f"scenario_form_{selected_profile}"):
             "gilt_1_p_date": g1_p_date,
             "gilt_1_m_date": g1_m_date,
             "gilt_1_pot": g1_pot,
-            "gilt_1_coupon": g1_coupon,
+            "gilt_1_coupon_pct": g1_coupon_pct,
             "gilt_2_amt": g2_amt,
             "gilt_2_price": g2_price,
             "gilt_2_p_date": g2_p_date,
             "gilt_2_m_date": g2_m_date,
             "gilt_2_pot": g2_pot,
-            "gilt_2_coupon": g2_coupon,
+            "gilt_2_coupon_pct": g2_coupon_pct,
             "gilt_3_amt": g3_amt,
             "gilt_3_price": g3_price,
             "gilt_3_p_date": g3_p_date,
             "gilt_3_m_date": g3_m_date,
             "gilt_3_pot": g3_pot,
-            "gilt_3_coupon": g3_coupon,
+            "gilt_3_coupon_pct": g3_coupon_pct,
             "gilt_4_amt": g4_amt,
             "gilt_4_price": g4_price,
             "gilt_4_p_date": g4_p_date,
             "gilt_4_m_date": g4_m_date,
             "gilt_4_pot": g4_pot,
-            "gilt_4_coupon": g4_coupon,
+            "gilt_4_coupon_pct": g4_coupon_pct,
             "gilt_5_amt": g5_amt,
             "gilt_5_price": g5_price,
             "gilt_5_p_date": g5_p_date,
             "gilt_5_m_date": g5_m_date,
             "gilt_5_pot": g5_pot,
-            "gilt_5_coupon": g5_coupon,
+            "gilt_5_coupon_pct": g5_coupon_pct,
             "crash_pct": crash_pct,
             "crash_date": crash_date,
             "annuity_annual": annuity_annual,
@@ -1296,7 +1319,7 @@ gilts_list = [
         purchase_date=active_p.get("gilt_1_p_date", get_next_tax_year_start()),
         maturity_date=active_p.get("gilt_1_m_date", get_next_tax_year_start()),
         target_pot=active_p.get("gilt_1_pot", "S&S ISA"),
-        coupon_amount=active_p.get("gilt_1_coupon", 0.0),
+        coupon_pct=active_p.get("gilt_1_coupon_pct", 0.0),
     ),
     GiltBond(
         amount=active_p.get("gilt_2_amt", 0.0),
@@ -1304,7 +1327,7 @@ gilts_list = [
         purchase_date=active_p.get("gilt_2_p_date", get_next_tax_year_start()),
         maturity_date=active_p.get("gilt_2_m_date", get_next_tax_year_start()),
         target_pot=active_p.get("gilt_2_pot", "S&S ISA"),
-        coupon_amount=active_p.get("gilt_2_coupon", 0.0),
+        coupon_pct=active_p.get("gilt_2_coupon_pct", 0.0),
     ),
     GiltBond(
         amount=active_p.get("gilt_3_amt", 0.0),
@@ -1312,7 +1335,7 @@ gilts_list = [
         purchase_date=active_p.get("gilt_3_p_date", get_next_tax_year_start()),
         maturity_date=active_p.get("gilt_3_m_date", get_next_tax_year_start()),
         target_pot=active_p.get("gilt_3_pot", "S&S ISA"),
-        coupon_amount=active_p.get("gilt_3_coupon", 0.0),
+        coupon_pct=active_p.get("gilt_3_coupon_pct", 0.0),
     ),
     GiltBond(
         amount=active_p.get("gilt_4_amt", 0.0),
@@ -1320,7 +1343,7 @@ gilts_list = [
         purchase_date=active_p.get("gilt_4_p_date", get_next_tax_year_start()),
         maturity_date=active_p.get("gilt_4_m_date", get_next_tax_year_start()),
         target_pot=active_p.get("gilt_4_pot", "S&S ISA"),
-        coupon_amount=active_p.get("gilt_4_coupon", 0.0),
+        coupon_pct=active_p.get("gilt_4_coupon_pct", 0.0),
     ),
     GiltBond(
         amount=active_p.get("gilt_5_amt", 0.0),
@@ -1328,7 +1351,7 @@ gilts_list = [
         purchase_date=active_p.get("gilt_5_p_date", get_next_tax_year_start()),
         maturity_date=active_p.get("gilt_5_m_date", get_next_tax_year_start()),
         target_pot=active_p.get("gilt_5_pot", "S&S ISA"),
-        coupon_amount=active_p.get("gilt_5_coupon", 0.0),
+        coupon_pct=active_p.get("gilt_5_coupon_pct", 0.0),
     ),
 ]
 
