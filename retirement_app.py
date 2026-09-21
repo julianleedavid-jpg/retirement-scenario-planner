@@ -83,6 +83,7 @@ DEFAULT_PROFILES = {
         "annuity_annual": 0.0,
         "annuity_cost": 0.0,
         "annuity_start_age": 62,
+        "annuity_type": "Inflation-Linked (RPI/CPI)",
         "inflate_annuity_to_start": False,
         "lump_sum_1_amt": 0.0,
         "lump_sum_1_date": get_next_tax_year_start(),
@@ -133,6 +134,7 @@ DEFAULT_PROFILES = {
         "annuity_annual": 15929.0,
         "annuity_cost": 0.0,
         "annuity_start_age": 65,
+        "annuity_type": "Inflation-Linked (RPI/CPI)",
         "inflate_annuity_to_start": False,
         "lump_sum_1_amt": 0.0,
         "lump_sum_1_date": get_next_tax_year_start(),
@@ -282,6 +284,7 @@ class Scenario:
     annuity_annual: float = 0.0
     annuity_cost: float = 0.0
     annuity_start_age: int = 65
+    annuity_type: str = "Inflation-Linked (RPI/CPI)"
     inflate_annuity_to_start: bool = False
     increased_monthly_inc: float = 0.0
     increase_date: date = field(default_factory=get_next_tax_year_start)
@@ -393,12 +396,15 @@ class RetirementEngine:
 
             current_annual_annuity = 0.0
             if current_date >= annuity_start_date and base_annuity > 0:
-                years_since_annuity = current_date.year - annuity_start_date.year - (
-                    (current_date.month, current_date.day) < (annuity_start_date.month, annuity_start_date.day)
-                )
-                current_annual_annuity = base_annuity * (
-                    (1.0 + self.scenario.inflation_rate) ** max(0, years_since_annuity)
-                )
+                if self.scenario.annuity_type == "Flat Rate (Level)":
+                    current_annual_annuity = base_annuity
+                else:
+                    years_since_annuity = current_date.year - annuity_start_date.year - (
+                        (current_date.month, current_date.day) < (annuity_start_date.month, annuity_start_date.day)
+                    )
+                    current_annual_annuity = base_annuity * (
+                        (1.0 + self.scenario.inflation_rate) ** max(0, years_since_annuity)
+                    )
 
             for idx, ls in enumerate(self.scenario.lump_sums):
                 if not lump_sums_applied[idx] and ls.amount != 0 and current_date >= ls.injection_date:
@@ -918,6 +924,15 @@ with st.sidebar.form(key=f"scenario_form_{selected_profile}"):
             step=1,
             help="Set the age at which pension annuity / Defined Benefit income payments begin.",
         )
+        annuity_types_list = ["Inflation-Linked (RPI/CPI)", "Flat Rate (Level)"]
+        saved_annuity_type = curr_data.get("annuity_type", "Inflation-Linked (RPI/CPI)")
+        annuity_type_idx = annuity_types_list.index(saved_annuity_type) if saved_annuity_type in annuity_types_list else 0
+        annuity_type = st.radio(
+            "Annuity Payout Type",
+            options=annuity_types_list,
+            index=annuity_type_idx,
+            help="Choose whether payments increase annually with inflation or remain level (flat rate)."
+        )
         inflate_annuity_to_start = st.checkbox(
             "Inflate Pension/Annuity to Start Age",
             value=curr_data.get("inflate_annuity_to_start", False),
@@ -986,6 +1001,7 @@ with st.sidebar.form(key=f"scenario_form_{selected_profile}"):
             "annuity_annual": annuity_annual,
             "annuity_cost": annuity_cost,
             "annuity_start_age": annuity_start_age,
+            "annuity_type": annuity_type,
             "inflate_annuity_to_start": inflate_annuity_to_start,
             "sipp_bal": sipp_bal,
             "sipp_ret": sipp_ret,
@@ -1065,6 +1081,7 @@ scenario_obj = Scenario(
     annuity_annual=active_p.get("annuity_annual", 0.0),
     annuity_cost=active_p.get("annuity_cost", 0.0),
     annuity_start_age=int(active_p.get("annuity_start_age", 65)),
+    annuity_type=active_p.get("annuity_type", "Inflation-Linked (RPI/CPI)"),
     inflate_annuity_to_start=active_p.get("inflate_annuity_to_start", False),
     increased_monthly_inc=active_p.get("increased_monthly_inc", 0.0),
     increase_date=active_p.get("increase_date", get_next_tax_year_start()),
@@ -1384,7 +1401,7 @@ with col_notes1:
         This engine applies strict, tax-efficient drawdown rules in a defined sequence on the 1st of every month:
 
         1. **Guaranteed Income First (Annuity & State Pension):**
-           * **Annuities / DB Pension:** Annual pension annuity payments are applied first and increase with inflation after Year 1.
+           * **Annuities / DB Pension:** Annual pension annuity payments are applied first and increase with inflation (or remain flat if level) after Year 1.
            * **State Pension:** Applied automatically once you reach your configured State Pension age, escalating annually by your growth input.
            * **Excess Income Recycling:** If guaranteed income exceeds your target inflation-adjusted monthly income, the surplus is automatically deposited into your **S&S ISA** (up to the **£20,000/year** limit), with any remaining excess directed to **Other Investments**.
 
