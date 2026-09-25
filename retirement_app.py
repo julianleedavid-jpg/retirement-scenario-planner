@@ -896,57 +896,59 @@ class RetirementEngine:
 # ----------------------------------------------------------------------
 
 # ----------------------------------------------------------------------
-# Trading 212 Live Sync Sidebar Widget (Defensive Safe Lookup)
+# Trading 212 Live Sync Sidebar Widget (Basic Auth / Direct Requests)
 # ----------------------------------------------------------------------
 with st.sidebar.expander("🔗 Live Trading 212 Sync", expanded=False):
     st.caption("Sync live portfolio balance from Trading 212.")
     try:
-        # Check both nested section and flat secret keys safely without throwing errors
-        t212_api_key = ""
-        t212_api_secret = ""
+        # Check for a flat key or nested key gracefully
+        t212_api_key = st.secrets.get("t212_api_key") or st.secrets["trading212"]["api_key"]
         is_live = True
-
-        if "trading212" in st.secrets:
-            t212_api_key = st.secrets["trading212"].get("api_key", "")
-            t212_api_secret = st.secrets["trading212"].get("api_secret", "")
+        try:
             is_live = st.secrets["trading212"].get("is_live", True)
-        else:
-            t212_api_key = st.secrets.get("t212_api_key", "")
-            t212_api_secret = st.secrets.get("t212_api_secret", "")
-            is_live = st.secrets.get("t212_is_live", True)
-
-        if not t212_api_key:
-            st.warning("T212 API Key not configured in secrets.toml.")
-        elif st.button("Sync T212 Portfolio Balance"):
+        except Exception:
+            pass
+        
+        if st.button("Sync T212 Portfolio Balance"):
             with st.spinner("Fetching data from Trading 212..."):
-                credential_str = f"{t212_api_key}:{t212_api_secret}"
-                encoded_creds = base64.b64encode(credential_str.encode("utf-8")).decode("utf-8")
-                headers = {"Authorization": f"Basic {encoded_creds}"}
-                
+                # Trading 212 supports direct Authorization header with the API key
+                headers = {"Authorization": t212_api_key}
                 base_url = "https://live.trading212.com/api/v0" if is_live else "https://demo.trading212.com/api/v0"
                 
-                response = requests.get(f"{base_url}/equity/account/summary", headers=headers)
+                cash_resp = requests.get(f"{base_url}/equity/account/cash", headers=headers)
+                pos_resp = requests.get(f"{base_url}/equity/portfolio", headers=headers)
                 
-                if response.status_code == 200:
-                    data = response.json()
-                    total_t212_val = data.get("totalValue", 0.0)
+                if cash_resp.status_code == 200 and pos_resp.status_code == 200:
+                    cash_data = cash_resp.json()
+                    positions_data = pos_resp.json()
+                    
+                    free_cash = cash_data.get("free", 0.0)
+                    invested_val = sum([p.get("ppc", 0) * p.get("quantity", 0) for p in positions_data])
+                    total_t212_val = invested_val + free_cash
                     
                     st.session_state['t212_synced_value'] = total_t212_val
                     st.success(f"Synced! Total: £{total_t212_val:,.2f}")
                 else:
-                    st.error(f"API Error: Status {response.status_code} - {response.text}")
+                    st.error(f"API Error: Cash Status {cash_resp.status_code}, Portfolio Status {pos_resp.status_code}")
     except Exception as e:
-        st.warning(f"T212 configuration error: {e}")
+        st.warning(f"T212 credentials not configured correctly in secrets: {e}")
 
     if 't212_synced_value' in st.session_state:
         sync_val = st.session_state['t212_synced_value']
         st.metric("Live T212 Value", f"£{sync_val:,.2f}")
-        if st.button("Apply to Active Profile (ISA)", width="stretch"):
+        if st.button("Apply to Active Profile (ISA)"):
             st.session_state.scenarios[selected_profile]["isa_bal"] = float(sync_val)
             save_scenarios()
             st.success("Applied synced value to ISA balance and saved!")
             st.rerun()
-
+    if 't212_synced_value' in st.session_state:
+        sync_val = st.session_state['t212_synced_value']
+        st.metric("Live T212 Value", f"£{sync_val:,.2f}")
+        if st.button("Apply to Active Profile (ISA)"):
+            st.session_state.scenarios[selected_profile]["isa_bal"] = float(sync_val)
+            save_scenarios()
+            st.success("Applied synced value to ISA balance and saved!")
+            st.rerun()
 st.sidebar.header("📁 Profile & Scenario Manager")
 
 scenario_list = list(st.session_state.scenarios.keys())
@@ -974,7 +976,7 @@ with st.sidebar.expander("➕ Add New Profile / Copy Current"):
             st.warning("Profile name already exists.")
 
 if selected_profile not in DEFAULT_PROFILES:
-    if st.sidebar.button(f"🗑️ Delete Profile '{selected_profile}'", width="stretch"):
+    if st.sidebar.button(f"🗑️ Delete Profile '{selected_profile}'", use_container_width=True):
         del st.session_state.scenarios[selected_profile]
         save_scenarios()
         st.session_state.active_scenario_name = list(st.session_state.scenarios.keys())[0]
@@ -991,7 +993,7 @@ with st.sidebar.form(key=f"scenario_form_{selected_profile}"):
     st.header(f"⚙️ Edit '{selected_profile}'")
 
     submit_top = st.form_submit_button(
-        label="🔄 Recalculate Forecast", width="stretch", key="recalc_top"
+        label="🔄 Recalculate Forecast", use_container_width=True, key="recalc_top"
     )
 
     with st.expander("👤 Core Profile & Income Goals", expanded=True):
@@ -1189,7 +1191,7 @@ with st.sidebar.form(key=f"scenario_form_{selected_profile}"):
         )
 
     submit_bottom = st.form_submit_button(
-        label="🔄 Recalculate Forecast", width="stretch", key="recalc_bottom"
+        label="🔄 Recalculate Forecast", use_container_width=True, key="recalc_bottom"
     )
 
     if submit_top or submit_bottom:
@@ -1460,7 +1462,7 @@ table_column_config = {
     "tax_paid": st.column_config.NumberColumn("Tax Paid", format="£%,d"),
 }
 
-st.dataframe(active_df, column_config=table_column_config, height=670, width="stretch")
+st.dataframe(active_df, column_config=table_column_config, height=670, use_container_width=True)
 
 st.markdown("---")
 
