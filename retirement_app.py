@@ -5,9 +5,12 @@ import os
 import calendar
 from typing import List, Tuple
 import uuid
+import base64
 import pandas as pd
+import requests
 import streamlit as st
 from streamlit_gsheets import GSheetsConnection
+
 
 def get_next_tax_year_start(from_date: date = None) -> date:
     if from_date is None:
@@ -22,7 +25,7 @@ st.set_page_config(page_title="Retirement Scenario Planner", layout="wide")
 
 
 # ----------------------------------------------------------------------
-# 0. Password Protection Gate
+# 0. Password Protection Gate (Placed at top before any UI renders)
 # ----------------------------------------------------------------------
 
 def check_password():
@@ -246,7 +249,6 @@ def deserialize_scenario(scen_dict: dict) -> dict:
                 deserialized[k] = v
         else:
             deserialized[k] = v
-    # Backward compatibility migration for old coupon keys
     if "gilt_1_coupon" in deserialized and "gilt_1_coupon_pct" not in deserialized:
         amt = deserialized.get("gilt_1_amt", 0.0)
         c_val = deserialized.pop("gilt_1_coupon")
@@ -285,11 +287,9 @@ def deserialize_scenario(scen_dict: dict) -> dict:
 
 def load_scenarios() -> dict:
     scenarios = {k: v.copy() for k, v in DEFAULT_PROFILES.items()}
-    
     try:
         conn = st.connection("gsheets", type=GSheetsConnection)
         df = conn.read(worksheet="Sheet1", usecols=[0, 1], ttl=0)
-        
         if not df.empty:
             loaded = {}
             for index, row in df.iterrows():
@@ -301,7 +301,6 @@ def load_scenarios() -> dict:
             scenarios.update(loaded)
     except Exception as e:
         pass
-        
     return scenarios
 
 
@@ -311,9 +310,7 @@ def save_scenarios():
         serialized_scen = serialize_scenario(scen)
         json_string = json.dumps(serialized_scen)
         rows.append({"Profile": name, "JSON_Data": json_string})
-    
     df = pd.DataFrame(rows)
-    
     try:
         conn = st.connection("gsheets", type=GSheetsConnection)
         conn.update(worksheet="Sheet1", data=df)
@@ -454,21 +451,13 @@ class RetirementEngine:
         return date(year, month, day)
 
     def _build_gilt_events(self) -> dict:
-        """Pre-computes purchase, semi-annual pro-rata coupon, and maturity events."""
         events_map = {}
-        
         for gilt in self.scenario.gilts_bonds:
             if gilt.amount <= 0 or gilt.purchase_date >= gilt.maturity_date:
                 continue
-            
-            # 1. Purchase Event
             cost = gilt.amount * (gilt.purchase_price_pct / 100.0)
             events_map.setdefault(gilt.purchase_date, []).append(("purchase", cost, gilt.target_pot))
-            
-            # 2. Maturity Event
             events_map.setdefault(gilt.maturity_date, []).append(("maturity", gilt.amount, gilt.target_pot))
-            
-            # 3. Semi-Annual Pro-Rata Coupons working backwards from maturity date
             annual_coupon_cash = gilt.amount * (gilt.coupon_pct / 100.0)
             if annual_coupon_cash > 0:
                 curr = gilt.maturity_date
@@ -478,30 +467,24 @@ class RetirementEngine:
                     curr = self._subtract_6_months(curr)
                 coupon_dates.append(curr)
                 coupon_dates.sort()
-                
                 for i in range(1, len(coupon_dates)):
                     p_start = coupon_dates[i-1]
                     p_end = coupon_dates[i]
-                    
                     pay_date = p_end
                     if pay_date > gilt.maturity_date:
                         pay_date = gilt.maturity_date
-                    
                     period_total_days = (p_end - p_start).days
                     held_start = max(p_start, gilt.purchase_date)
                     held_end = min(p_end, gilt.maturity_date)
                     held_days = (held_end - held_start).days
-                    
                     if period_total_days > 0 and held_days > 0:
                         fraction = held_days / period_total_days
                         coupon_payment = (annual_coupon_cash / 2.0) * fraction
                         events_map.setdefault(pay_date, []).append(("coupon", coupon_payment, gilt.target_pot))
-                        
         return events_map
 
     def run_simulation(self) -> Tuple[pd.DataFrame, pd.DataFrame]:
         start_date = date.today()
-
         try:
             target_100_date = date(self.dob.year + 100, self.dob.month, self.dob.day)
         except ValueError:
@@ -573,7 +556,6 @@ class RetirementEngine:
                             other += ls.amount
                     else:
                         rem_withdrawal = abs(ls.amount)
-                        
                         def draw_from_pot(current_bal, requested):
                             possible = min(current_bal, requested)
                             return current_bal - possible, requested - possible
@@ -607,10 +589,8 @@ class RetirementEngine:
                                 sipp, rem_withdrawal = draw_from_pot(sipp, rem_withdrawal)
                         elif ls.target_pot == "S&S ISA":
                             isa, rem_withdrawal = draw_from_pot(isa, rem_withdrawal)
-
                     lump_sums_applied[idx] = True
 
-            # Gilt / Bond Events Handler
             daily_gilt_income = 0.0
             if current_date in gilt_events_map:
                 for ev_type, amt, target_pot in gilt_events_map[current_date]:
@@ -628,8 +608,7 @@ class RetirementEngine:
                         elif target_pot == "Other Investment":
                             other = max(0.0, other - rem_cost)
                     elif ev_type in ("coupon", "maturity"):
-                        if ev_type in ("coupon", "maturity"):
-                            daily_gilt_income += amt
+                        daily_gilt_income += amt
                         if target_pot == "SIPP":
                             sipp += amt
                         elif target_pot == "Private Pension":
@@ -651,7 +630,6 @@ class RetirementEngine:
                 wp_tax_free *= drop_factor
                 isa *= drop_factor
                 crash_applied = True
-
                 try:
                     crash_active_until = date(
                         self.scenario.crash_date.year + 2,
@@ -662,7 +640,6 @@ class RetirementEngine:
                     crash_active_until = date(
                         self.scenario.crash_date.year + 2, 2, 28
                     )
-
                 if self.scenario.crash_pct > 5.0:
                     years_to_crash = self.scenario.crash_date.year - start_date.year - (
                         (self.scenario.crash_date.month, self.scenario.crash_date.day) < (start_date.month, start_date.day)
@@ -678,7 +655,6 @@ class RetirementEngine:
                     draw_other = min(other, cost_rem)
                     other -= draw_other
                     cost_rem -= draw_other
-
                     if cost_rem > 0:
                         tot_pension = sipp + wp_taxable + wp_tax_free
                         draw_pension = min(tot_pension, cost_rem)
@@ -686,17 +662,14 @@ class RetirementEngine:
                             s_share = sipp / tot_pension
                             wpt_share = wp_taxable / tot_pension
                             wptf_share = wp_tax_free / tot_pension
-
                             sipp -= draw_pension * s_share
                             wp_taxable -= draw_pension * wpt_share
                             wp_tax_free -= draw_pension * wptf_share
                             cost_rem -= draw_pension
-
                     if cost_rem > 0:
                         draw_isa = min(isa, cost_rem)
                         isa -= draw_isa
                         cost_rem -= draw_isa
-
                 annuity_purchased = True
 
             if not is_retired and current_date.day == 1:
@@ -707,16 +680,10 @@ class RetirementEngine:
                 other += self.scenario.other_investment.monthly_contrib
 
             sipp *= 1.0 + self._get_daily_rate(self.scenario.sipp.annual_return)
-            wp_taxable *= 1.0 + self._get_daily_rate(
-                self.scenario.workplace_taxable.annual_return
-            )
-            wp_tax_free *= 1.0 + self._get_daily_rate(
-                self.scenario.workplace_tax_free.annual_return
-            )
+            wp_taxable *= 1.0 + self._get_daily_rate(self.scenario.workplace_taxable.annual_return)
+            wp_tax_free *= 1.0 + self._get_daily_rate(self.scenario.workplace_tax_free.annual_return)
             isa *= 1.0 + self._get_daily_rate(self.scenario.isa.annual_return)
-            other *= 1.0 + self._get_daily_rate(
-                self.scenario.other_investment.annual_return
-            )
+            other *= 1.0 + self._get_daily_rate(self.scenario.other_investment.annual_return)
 
             monthly_drawn_from_pots = 0.0
             state_pension_monthly = 0.0
@@ -782,10 +749,8 @@ class RetirementEngine:
                 if guaranteed_monthly_income > inflated_monthly_income:
                     excess_income = guaranteed_monthly_income - inflated_monthly_income
                     isa_allowance_rem = max(0.0, self.ISA_ANNUAL_ALLOWANCE - isa_credited_this_tax_year)
-                    
                     to_isa = min(excess_income, isa_allowance_rem)
                     to_other = excess_income - to_isa
-
                     isa += to_isa
                     other += to_other
                     isa_credited_this_tax_year += to_isa
@@ -807,7 +772,6 @@ class RetirementEngine:
                         target = min(needed_net, allowance_rem)
                         tot_taxable = sipp + wp_taxable
                         draw = min(tot_taxable, target)
-
                         if draw > 0:
                             s_share = sipp / tot_taxable
                             wp_share = wp_taxable / tot_taxable
@@ -833,16 +797,13 @@ class RetirementEngine:
                     if needed_net > 0 and tot_taxable > 0:
                         gross_needed = needed_net / (1.0 - self.BASIC_TAX_RATE)
                         gross_draw = min(tot_taxable, gross_needed)
-
                         if gross_draw > 0:
                             s_share = sipp / tot_taxable
                             wp_share = wp_taxable / tot_taxable
                             sipp -= gross_draw * s_share
                             wp_taxable -= gross_draw * wp_share
-
                             net_rec = gross_draw * (1.0 - self.BASIC_TAX_RATE)
                             tax = gross_draw * self.BASIC_TAX_RATE
-
                             taxable_income_this_tax_year += gross_draw
                             needed_net -= net_rec
                             monthly_drawn_from_pots += net_rec
@@ -860,8 +821,6 @@ class RetirementEngine:
             private_pension_val = wp_taxable + wp_tax_free
             total_portfolio = (sipp + wp_taxable + wp_tax_free + isa + other) - cumulative_deficit
             total_monthly_income = monthly_drawn_from_pots + state_pension_monthly + annuity_monthly
-
-            # Investment Income totals all income from pots (gilt coupons/maturities + pot drawdowns)
             total_daily_investment_income = daily_gilt_income + monthly_drawn_from_pots
 
             daily_records.append({
@@ -886,30 +845,19 @@ class RetirementEngine:
                 "monthly_net_income": int(round(total_monthly_income)),
                 "tax_paid": int(round(tax_paid)),
             })
-
             current_date += timedelta(days=1)
 
         df = pd.DataFrame(daily_records)
-
         monthly_df = (
             df.groupby("raw_month")
             .agg({
-                "date": "last",
-                "age": "last",
-                "is_retired": "last",
-                "desired_monthly_income": "last",
-                "desired_annual_income": "last",
-                "sipp": "last",
-                "private_pension": "last",
-                "isa": "last",
-                "other_investment": "last",
-                "investment_income": "sum",
-                "total_portfolio": "last",
-                "annuity_income": "last",
-                "state_pension_income": "sum",
-                "pot_income_drawn": "sum",
-                "monthly_net_income": "sum",
-                "tax_paid": "sum",
+                "date": "last", "age": "last", "is_retired": "last",
+                "desired_monthly_income": "last", "desired_annual_income": "last",
+                "sipp": "last", "private_pension": "last", "isa": "last",
+                "other_investment": "last", "investment_income": "sum",
+                "total_portfolio": "last", "annuity_income": "last",
+                "state_pension_income": "sum", "pot_income_drawn": "sum",
+                "monthly_net_income": "sum", "tax_paid": "sum",
             })
             .reset_index()
         )
@@ -918,22 +866,13 @@ class RetirementEngine:
         tax_year_df = (
             df.groupby("tax_year")
             .agg({
-                "date": "last",
-                "age": "last",
-                "is_retired": "last",
-                "desired_monthly_income": "last",
-                "desired_annual_income": "last",
-                "sipp": "last",
-                "private_pension": "last",
-                "isa": "last",
-                "other_investment": "last",
-                "investment_income": "sum",
-                "total_portfolio": "last",
-                "annuity_income": "last",
-                "state_pension_income": "sum",
-                "pot_income_drawn": "sum",
-                "monthly_net_income": "sum",
-                "tax_paid": "sum",
+                "date": "last", "age": "last", "is_retired": "last",
+                "desired_monthly_income": "last", "desired_annual_income": "last",
+                "sipp": "last", "private_pension": "last", "isa": "last",
+                "other_investment": "last", "investment_income": "sum",
+                "total_portfolio": "last", "annuity_income": "last",
+                "state_pension_income": "sum", "pot_income_drawn": "sum",
+                "monthly_net_income": "sum", "tax_paid": "sum",
             })
             .reset_index()
         )
@@ -941,19 +880,10 @@ class RetirementEngine:
         tax_year_df["monthly_net_income"] = (tax_year_df["monthly_net_income"] / 12.0).round(0)
 
         num_cols = [
-            "desired_monthly_income",
-            "desired_annual_income",
-            "sipp",
-            "private_pension",
-            "isa",
-            "other_investment",
-            "investment_income",
-            "total_portfolio",
-            "annuity_income",
-            "state_pension_income",
-            "pot_income_drawn",
-            "monthly_net_income",
-            "tax_paid",
+            "desired_monthly_income", "desired_annual_income", "sipp",
+            "private_pension", "isa", "other_investment", "investment_income",
+            "total_portfolio", "annuity_income", "state_pension_income",
+            "pot_income_drawn", "monthly_net_income", "tax_paid",
         ]
         monthly_df[num_cols] = monthly_df[num_cols].round(0).astype(int)
         tax_year_df[num_cols] = tax_year_df[num_cols].round(0).astype(int)
@@ -965,6 +895,60 @@ class RetirementEngine:
 # 4. Streamlit Sidebar: Profile Management & Inputs Form
 # ----------------------------------------------------------------------
 
+# ----------------------------------------------------------------------
+# Trading 212 Live Sync Sidebar Widget (Basic Auth / Direct Requests)
+# ----------------------------------------------------------------------
+with st.sidebar.expander("🔗 Live Trading 212 Sync", expanded=False):
+    st.caption("Sync live portfolio balance from Trading 212.")
+    try:
+        # Check for a flat key or nested key gracefully
+        t212_api_key = st.secrets.get("t212_api_key") or st.secrets["trading212"]["api_key"]
+        is_live = True
+        try:
+            is_live = st.secrets["trading212"].get("is_live", True)
+        except Exception:
+            pass
+        
+        if st.button("Sync T212 Portfolio Balance"):
+            with st.spinner("Fetching data from Trading 212..."):
+                # Trading 212 supports direct Authorization header with the API key
+                headers = {"Authorization": t212_api_key}
+                base_url = "https://live.trading212.com/api/v0" if is_live else "https://demo.trading212.com/api/v0"
+                
+                cash_resp = requests.get(f"{base_url}/equity/account/cash", headers=headers)
+                pos_resp = requests.get(f"{base_url}/equity/portfolio", headers=headers)
+                
+                if cash_resp.status_code == 200 and pos_resp.status_code == 200:
+                    cash_data = cash_resp.json()
+                    positions_data = pos_resp.json()
+                    
+                    free_cash = cash_data.get("free", 0.0)
+                    invested_val = sum([p.get("ppc", 0) * p.get("quantity", 0) for p in positions_data])
+                    total_t212_val = invested_val + free_cash
+                    
+                    st.session_state['t212_synced_value'] = total_t212_val
+                    st.success(f"Synced! Total: £{total_t212_val:,.2f}")
+                else:
+                    st.error(f"API Error: Cash Status {cash_resp.status_code}, Portfolio Status {pos_resp.status_code}")
+    except Exception as e:
+        st.warning(f"T212 credentials not configured correctly in secrets: {e}")
+
+    if 't212_synced_value' in st.session_state:
+        sync_val = st.session_state['t212_synced_value']
+        st.metric("Live T212 Value", f"£{sync_val:,.2f}")
+        if st.button("Apply to Active Profile (ISA)"):
+            st.session_state.scenarios[selected_profile]["isa_bal"] = float(sync_val)
+            save_scenarios()
+            st.success("Applied synced value to ISA balance and saved!")
+            st.rerun()
+    if 't212_synced_value' in st.session_state:
+        sync_val = st.session_state['t212_synced_value']
+        st.metric("Live T212 Value", f"£{sync_val:,.2f}")
+        if st.button("Apply to Active Profile (ISA)"):
+            st.session_state.scenarios[selected_profile]["isa_bal"] = float(sync_val)
+            save_scenarios()
+            st.success("Applied synced value to ISA balance and saved!")
+            st.rerun()
 st.sidebar.header("📁 Profile & Scenario Manager")
 
 scenario_list = list(st.session_state.scenarios.keys())
@@ -1604,7 +1588,6 @@ with col_sec1:
                     st.session_state.pop(f"budget_month_{selected_profile}_{b_id}", None)
                     st.session_state.pop(f"budget_amt_{selected_profile}_{b_id}", None)
                     st.session_state.pop(f"budget_annual_{selected_profile}_{b_id}", None)
-                
                 budget_items.pop(i)
                 st.session_state.scenarios[selected_profile]["budget_items"] = budget_items
                 save_scenarios()
@@ -1613,7 +1596,6 @@ with col_sec1:
                 surviving_budget_items.append({"id": item_id, "item": item_val, "month_paid": month_val, "amount": amt_val, "annual_amount": annual_val})
 
         st.markdown("##### Add New Expenditure Item")
-        
         new_item_key = f"new_item_name_{selected_profile}"
         new_month_key = f"new_month_val_{selected_profile}"
         new_amt_key = f"new_amt_val_{selected_profile}"
@@ -1645,19 +1627,15 @@ with col_sec1:
                     "amount": final_monthly,
                     "annual_amount": final_annual
                 })
-                
                 if st.session_state[sort_key_state] == "Alphabetical":
                     surviving_budget_items = sorted(surviving_budget_items, key=lambda x: str(x.get("item", "")).lower())
                 else:
                     surviving_budget_items = sorted(surviving_budget_items, key=lambda x: float(x.get("amount", 0.0)), reverse=True)
-                
                 st.session_state.scenarios[selected_profile]["budget_items"] = surviving_budget_items
                 save_scenarios()
-                
                 st.session_state.pop(new_item_key, None)
                 st.session_state.pop(new_amt_key, None)
                 st.session_state.pop(new_annual_key, None)
-                
                 st.success("Item added!")
                 st.rerun()
             else:
@@ -1675,7 +1653,6 @@ with col_sec1:
                 surviving_budget_items = sorted(surviving_budget_items, key=lambda x: str(x.get("item", "")).lower())
             else:
                 surviving_budget_items = sorted(surviving_budget_items, key=lambda x: float(x.get("amount", 0.0)), reverse=True)
-            
             st.session_state.scenarios[selected_profile]["budget_items"] = surviving_budget_items
             save_scenarios()
             st.toast(f"Budget saved for profile '{selected_profile}'!", icon="💾")
@@ -1691,7 +1668,6 @@ with col_sec2:
             key=notes_key,
             placeholder="Type any custom notes, reminders, or scenario assumptions here...",
         )
-        
         if st.button("💾 Save Notes", key=f"save_notes_btn_{selected_profile}"):
             st.session_state.scenarios[selected_profile]["notes"] = user_notes
             save_scenarios()
@@ -1745,6 +1721,4 @@ with col_notes2:
         | **8** | **European Debt Crisis** *(2011)* | **-19.4%** | **~6 months** *(Feb 2012)* | **-20.2%** | **~1.5 years** *(Feb 2013)* | Eurozone debt fears (Greece/Italy), US credit downgrade |
         | **9** | **COVID-19 Pandemic** *(2020)* | **-33.9%** | **~5 months** *(Aug 2020)* | **-34.8%** | **~2.8 years** *(Jan 2023)* | Global lockdowns, economic shutdown, pandemic uncertainty |
         | **10** | **Inflation & Rate Hikes** *(2022)* | **-25.4%** | **~2.2 years** *(Jan 2024)* | **-10.3%** | **~4 months** *(Feb 2023)* | Post-pandemic inflation spike, aggressive rate hikes |
-        
-        *Note: The FTSE 100 was introduced on January 3, 1984. Recovery times reflect nominal market price returns reaching previous peaks.*
         """)
