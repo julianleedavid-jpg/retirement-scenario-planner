@@ -1015,7 +1015,8 @@ with st.sidebar.form(key=f"scenario_form_{selected_profile}"):
         increase_date = st.date_input(
             "Increase Date",
             value=curr_data.get("increase_date", get_next_tax_year_start()),
-            min_value=date.today(),
+            min_value=date(2020, 1, 1),
+            max_value=date(2070, 12, 31),
             format="DD/MM/YYYY",
         )
         default_reduced_inc = curr_data.get("reduced_monthly_inc", curr_data["monthly_inc"])
@@ -1148,7 +1149,7 @@ with st.sidebar.form(key=f"scenario_form_{selected_profile}"):
             help="Check this if the entered annual figure is in today's money. It will grow by inflation until the start age before payments begin.",
         )
 
-    with st.expander("🏛️️ State Pension", expanded=False):
+    with st.expander("🏛 State Pension", expanded=False):
         has_state_pension = st.checkbox("Include State Pension", value=curr_data.get("has_state_pension", True))
         state_pension_age = st.number_input("State Pension Start Age", min_value=60, max_value=75, value=int(curr_data.get("state_pension_age", 67)))
         state_pension_amount = st.number_input("State Pension Annual (£)", min_value=0.0, value=float(curr_data.get("state_pension_amount", 12548.0)), step=100.0)
