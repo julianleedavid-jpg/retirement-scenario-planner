@@ -968,7 +968,7 @@ if selected_profile not in DEFAULT_PROFILES:
         del st.session_state.scenarios[selected_profile]
         save_scenarios()
         st.session_state.active_scenario_name = list(st.session_state.scenarios.keys())[0]
-        st.toast(f"Deleted profile '{selected_profile}'", icon="🗑️")
+        st.toast(f"Deleted profile '{selected_profile}'", icon="🗑️️")
         st.rerun()
 else:
     st.sidebar.caption("🔒 Default profile (cannot be deleted)")
@@ -1452,6 +1452,42 @@ table_column_config = {
 
 st.dataframe(active_df, column_config=table_column_config, height=670, use_container_width=True)
 
+# ----------------------------------------------------------------------
+# Narrative Explorer Section
+# ----------------------------------------------------------------------
+st.markdown("---")
+st.subheader("📖 Annual Income & Drawdown Narrative Explorer")
+
+year_options = active_df[x_col].tolist()
+selected_year_label = st.selectbox("Select a Year/Period to Inspect Narrative:", options=year_options)
+
+selected_row = active_df[active_df[x_col] == selected_year_label].iloc[0]
+
+age_val = int(selected_row["age"])
+desired_inc = int(selected_row["desired_annual_income"] if active_p["view_mode"] == "Tax Year" else selected_row["desired_monthly_income"] * 12)
+state_pen = int(selected_row["state_pension_income"] * (12 if active_p["view_mode"] != "Tax Year" else 1))
+annuity_inc = int(selected_row["annuity_income"])
+pot_drawn = int(selected_row["pot_income_drawn"] * (12 if active_p["view_mode"] != "Tax Year" else 1))
+tax_paid = int(selected_row["tax_paid"] * (12 if active_p["view_mode"] != "Tax Year" else 1))
+is_ret = selected_row["is_retired"]
+
+ncol1, ncol2, ncol3 = st.columns(3)
+ncol1.metric("Target Annual Income Needed", f"£{desired_inc:,}")
+ncol2.metric("Pot Drawdowns Required", f"£{pot_drawn:,}")
+ncol3.metric("Tax Paid", f"£{tax_paid:,}")
+
+if not is_ret:
+    st.info(f"**Status at Age {age_val}:** You are still in your **working phase** (pre-retirement). Regular monthly contributions are actively building your investment pots.")
+else:
+    guaranteed_total = state_pen + annuity_inc
+    st.success(f"""
+    **Retirement Narrative for {selected_year_label} (Age {age_val}):**
+    * **Target Income Goal:** You required **£{desired_inc:,}** net for the year.
+    * **Guaranteed Income:** **£{guaranteed_total:,}** was covered automatically (£{annuity_inc:,} from your Annuity/DB pension and £{state_pen:,} from your State Pension).
+    * **Investment Pot Drawdowns:** To cover the remaining shortfall, a total of **£{pot_drawn:,}** was systematically drawn from your available pots according to your tax-efficient hierarchy rules.
+    * **Tax Summary:** An estimated **£{tax_paid:,}** in income tax was incurred and paid during this period.
+    """)
+
 st.markdown("---")
 
 # ----------------------------------------------------------------------
@@ -1705,7 +1741,7 @@ with col_notes2:
         | **4** | **Gulf War Crash** *(1990)* | **-19.9%** | **~6 months** *(Feb 1991)* | **-21.8%** | **~7 months** *(Feb 1991)* | Iraqi invasion of Kuwait, oil price spike, US recession |
         | **5** | **Russian Debt & LTCM** *(1998)* | **-19.3%** | **~3 months** *(Nov 1998)* | **-21.7%** | **~6 months** *(Feb 1999)* | Russian sovereign debt default, LTCM hedge fund collapse |
         | **6** | **Dot-Com Bubble Burst** *(2000–2003)* | **-49.1%** | **~7.2 years** *(May 2007)* | **-52.6%** | **~7.8 years** *(Nov 2007)* | Tech overvaluation, corporate accounting scandals |
-        | **7** | **Global Financial Crisis** *(2007–2009)* | **-56.8%** | **~5.5 years** *(Mar 2003)* | **-48.3%** | **~7.3 years** *(Feb 2015)* | Subprime mortgage collapse, Lehman Brothers collapse |
+        | **7** | **Global Financial Crisis** *(2007–2009)* | **-56.8%** | **~5.5 years** *(Mar 2013)* | **-48.3%** | **~7.3 years** *(Feb 2015)* | Subprime mortgage collapse, Lehman Brothers collapse |
         | **8** | **European Debt Crisis** *(2011)* | **-19.4%** | **~6 months** *(Feb 2012)* | **-20.2%** | **~1.5 years** *(Feb 2013)* | Eurozone debt fears (Greece/Italy), US credit downgrade |
         | **9** | **COVID-19 Pandemic** *(2020)* | **-33.9%** | **~5 months** *(Aug 2020)* | **-34.8%** | **~2.8 years** *(Jan 2023)* | Global lockdowns, economic shutdown, pandemic uncertainty |
         | **10** | **Inflation & Rate Hikes** *(2022)* | **-25.4%** | **~2.2 years** *(Jan 2024)* | **-10.3%** | **~4 months** *(Feb 2023)* | Post-pandemic inflation spike, aggressive rate hikes |
