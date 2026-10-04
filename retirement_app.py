@@ -1148,7 +1148,7 @@ with st.sidebar.form(key=f"scenario_form_{selected_profile}"):
             help="Check this if the entered annual figure is in today's money. It will grow by inflation until the start age before payments begin.",
         )
 
-    with st.expander("🏛️ State Pension", expanded=False):
+    with st.expander("🏛️️ State Pension", expanded=False):
         has_state_pension = st.checkbox("Include State Pension", value=curr_data.get("has_state_pension", True))
         state_pension_age = st.number_input("State Pension Start Age", min_value=60, max_value=75, value=int(curr_data.get("state_pension_age", 67)))
         state_pension_amount = st.number_input("State Pension Annual (£)", min_value=0.0, value=float(curr_data.get("state_pension_amount", 12548.0)), step=100.0)
@@ -1564,7 +1564,7 @@ with col_sec1:
 
         st.markdown("---")
         
-        hcol1, hcol2, hcol3, hcol4, hcol5 = st.columns([3, 2, 2, 2, 1])
+        hcol1, hcol2, hcol3, hcol4, hcol5, hcol6 = st.columns([3, 2, 2, 2, 2, 1])
         with hcol1:
             st.markdown("**Expenditure Item**")
         with hcol2:
@@ -1574,12 +1574,14 @@ with col_sec1:
         with hcol4:
             st.markdown("**Annual Amount**")
         with hcol5:
+            st.markdown("**% of Budget**")
+        with hcol6:
             st.markdown("")
 
         surviving_budget_items = []
         for i, item in enumerate(budget_items):
             item_id = item["id"]
-            cols = st.columns([3, 2, 2, 2, 1])
+            cols = st.columns([3, 2, 2, 2, 2, 1])
             with cols[0]:
                 item_val = st.text_input("Expenditure Item", value=item.get("item", ""), key=f"budget_item_{selected_profile}_{item_id}", label_visibility="collapsed")
             with cols[1]:
@@ -1607,6 +1609,9 @@ with col_sec1:
             with cols[3]:
                 annual_val = st.number_input("Annual Amount", value=float(item.get("annual_amount", item.get("amount", 0.0) * 12.0)), step=100.0, key=annual_key, on_change=make_sync_annual(), label_visibility="collapsed")
             with cols[4]:
+                pct_val = (amt_val / total_budget_outgoings * 100.0) if total_budget_outgoings > 0 else 0.0
+                st.markdown(f"**{pct_val:.1f}%**")
+            with cols[5]:
                 remove_clicked = st.button("🗑️", key=f"del_budget_{selected_profile}_{item_id}")
             
             if remove_clicked:
