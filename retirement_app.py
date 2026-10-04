@@ -683,7 +683,11 @@ class RetirementEngine:
             wp_taxable *= 1.0 + self._get_daily_rate(self.scenario.workplace_taxable.annual_return)
             wp_tax_free *= 1.0 + self._get_daily_rate(self.scenario.workplace_tax_free.annual_return)
             isa *= 1.0 + self._get_daily_rate(self.scenario.isa.annual_return)
-            other *= 1.0 + self._get_daily_rate(self.scenario.other_investment.annual_return)
+            
+            # Other investment daily compounding with 18% CGT tax on growth
+            other_growth = other * self._get_daily_rate(self.scenario.other_investment.annual_return)
+            other_tax_on_growth = other_growth * 0.18
+            other += (other_growth - other_tax_on_growth)
 
             monthly_drawn_from_pots = 0.0
             state_pension_monthly = 0.0
@@ -968,7 +972,7 @@ if selected_profile not in DEFAULT_PROFILES:
         del st.session_state.scenarios[selected_profile]
         save_scenarios()
         st.session_state.active_scenario_name = list(st.session_state.scenarios.keys())[0]
-        st.toast(f"Deleted profile '{selected_profile}'", icon="🗑️️")
+        st.toast(f"Deleted profile '{selected_profile}'", icon="🗑️")
         st.rerun()
 else:
     st.sidebar.caption("🔒 Default profile (cannot be deleted)")
