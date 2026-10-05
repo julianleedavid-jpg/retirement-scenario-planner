@@ -683,9 +683,19 @@ class RetirementEngine:
             wp_taxable *= 1.0 + self._get_daily_rate(self.scenario.workplace_taxable.annual_return)
             wp_tax_free *= 1.0 + self._get_daily_rate(self.scenario.workplace_tax_free.annual_return)
             isa *= 1.0 + self._get_daily_rate(self.scenario.isa.annual_return)
-            other *= 1.0 + self._get_daily_rate(self.scenario.other_investment.annual_return)
+            
+            # Other investment daily compounding with 18% CGT tax on growth
+            other_growth = other * self._get_daily_rate(self.scenario.other_investment.annual_return)
+            other_tax_on_growth = other_growth * 0.18
+            other += (other_growth - other_tax_on_growth)
 
             monthly_drawn_from_pots = 0.0
+            draw_sipp_amt = 0.0
+            draw_wp_taxable_amt = 0.0
+            draw_wp_taxfree_amt = 0.0
+            draw_isa_amt = 0.0
+            draw_other_amt = 0.0
+
             state_pension_monthly = 0.0
             annuity_monthly = 0.0
             tax_paid = 0.0
@@ -763,6 +773,7 @@ class RetirementEngine:
                         draw = min(other, needed_net)
                         other -= draw
                         needed_net -= draw
+                        draw_other_amt += draw
                         monthly_drawn_from_pots += draw
                 else:
                     allowance_rem = max(
@@ -773,10 +784,14 @@ class RetirementEngine:
                         tot_taxable = sipp + wp_taxable
                         draw = min(tot_taxable, target)
                         if draw > 0:
-                            s_share = sipp / tot_taxable
-                            wp_share = wp_taxable / tot_taxable
-                            sipp -= draw * s_share
-                            wp_taxable -= draw * wp_share
+                            s_share = (sipp / tot_taxable) if tot_taxable > 0 else 0.0
+                            wp_share = (wp_taxable / tot_taxable) if tot_taxable > 0 else 0.0
+                            s_draw = draw * s_share
+                            wp_draw = draw * wp_share
+                            sipp -= s_draw
+                            wp_taxable -= wp_draw
+                            draw_sipp_amt += s_draw
+                            draw_wp_taxable_amt += wp_draw
                             taxable_income_this_tax_year += draw
                             needed_net -= draw
                             monthly_drawn_from_pots += draw
@@ -785,12 +800,14 @@ class RetirementEngine:
                         draw = min(isa, needed_net)
                         isa -= draw
                         needed_net -= draw
+                        draw_isa_amt += draw
                         monthly_drawn_from_pots += draw
 
                     if needed_net > 0 and wp_tax_free > 0:
                         draw = min(wp_tax_free, needed_net)
                         wp_tax_free -= draw
                         needed_net -= draw
+                        draw_wp_taxfree_amt += draw
                         monthly_drawn_from_pots += draw
 
                     tot_taxable = sipp + wp_taxable
@@ -798,10 +815,14 @@ class RetirementEngine:
                         gross_needed = needed_net / (1.0 - self.BASIC_TAX_RATE)
                         gross_draw = min(tot_taxable, gross_needed)
                         if gross_draw > 0:
-                            s_share = sipp / tot_taxable
-                            wp_share = wp_taxable / tot_taxable
-                            sipp -= gross_draw * s_share
-                            wp_taxable -= gross_draw * wp_share
+                            s_share = (sipp / tot_taxable) if tot_taxable > 0 else 0.0
+                            wp_share = (wp_taxable / tot_taxable) if tot_taxable > 0 else 0.0
+                            s_draw = gross_draw * s_share
+                            wp_draw = gross_draw * wp_share
+                            sipp -= s_draw
+                            wp_taxable -= wp_draw
+                            draw_sipp_amt += s_draw
+                            draw_wp_taxable_amt += wp_draw
                             net_rec = gross_draw * (1.0 - self.BASIC_TAX_RATE)
                             tax = gross_draw * self.BASIC_TAX_RATE
                             taxable_income_this_tax_year += gross_draw
@@ -813,6 +834,7 @@ class RetirementEngine:
                         draw = min(other, needed_net)
                         other -= draw
                         needed_net -= draw
+                        draw_other_amt += draw
                         monthly_drawn_from_pots += draw
 
                 if needed_net > 0:
@@ -842,6 +864,11 @@ class RetirementEngine:
                 "annuity_income": int(round(current_annual_annuity if is_retired else 0.0)),
                 "state_pension_income": int(round(state_pension_monthly)),
                 "pot_income_drawn": int(round(monthly_drawn_from_pots)),
+                "draw_sipp": draw_sipp_amt,
+                "draw_wp_taxable": draw_wp_taxable_amt,
+                "draw_wp_taxfree": draw_wp_taxfree_amt,
+                "draw_isa": draw_isa_amt,
+                "draw_other": draw_other_amt,
                 "monthly_net_income": int(round(total_monthly_income)),
                 "tax_paid": int(round(tax_paid)),
             })
@@ -857,6 +884,8 @@ class RetirementEngine:
                 "other_investment": "last", "investment_income": "sum",
                 "total_portfolio": "last", "annuity_income": "last",
                 "state_pension_income": "sum", "pot_income_drawn": "sum",
+                "draw_sipp": "sum", "draw_wp_taxable": "sum", "draw_wp_taxfree": "sum",
+                "draw_isa": "sum", "draw_other": "sum",
                 "monthly_net_income": "sum", "tax_paid": "sum",
             })
             .reset_index()
@@ -872,6 +901,8 @@ class RetirementEngine:
                 "other_investment": "last", "investment_income": "sum",
                 "total_portfolio": "last", "annuity_income": "last",
                 "state_pension_income": "sum", "pot_income_drawn": "sum",
+                "draw_sipp": "sum", "draw_wp_taxable": "sum", "draw_wp_taxfree": "sum",
+                "draw_isa": "sum", "draw_other": "sum",
                 "monthly_net_income": "sum", "tax_paid": "sum",
             })
             .reset_index()
@@ -883,7 +914,8 @@ class RetirementEngine:
             "desired_monthly_income", "desired_annual_income", "sipp",
             "private_pension", "isa", "other_investment", "investment_income",
             "total_portfolio", "annuity_income", "state_pension_income",
-            "pot_income_drawn", "monthly_net_income", "tax_paid",
+            "pot_income_drawn", "draw_sipp", "draw_wp_taxable", "draw_wp_taxfree",
+            "draw_isa", "draw_other", "monthly_net_income", "tax_paid",
         ]
         monthly_df[num_cols] = monthly_df[num_cols].round(0).astype(int)
         tax_year_df[num_cols] = tax_year_df[num_cols].round(0).astype(int)
@@ -895,13 +927,9 @@ class RetirementEngine:
 # 4. Streamlit Sidebar: Profile Management & Inputs Form
 # ----------------------------------------------------------------------
 
-# ----------------------------------------------------------------------
-# Trading 212 Live Sync Sidebar Widget (Basic Auth / Direct Requests)
-# ----------------------------------------------------------------------
 with st.sidebar.expander("🔗 Live Trading 212 Sync", expanded=False):
     st.caption("Sync live portfolio balance from Trading 212.")
     try:
-        # Check for a flat key or nested key gracefully
         t212_api_key = st.secrets.get("t212_api_key") or st.secrets["trading212"]["api_key"]
         is_live = True
         try:
@@ -911,7 +939,6 @@ with st.sidebar.expander("🔗 Live Trading 212 Sync", expanded=False):
         
         if st.button("Sync T212 Portfolio Balance"):
             with st.spinner("Fetching data from Trading 212..."):
-                # Trading 212 supports direct Authorization header with the API key
                 headers = {"Authorization": t212_api_key}
                 base_url = "https://live.trading212.com/api/v0" if is_live else "https://demo.trading212.com/api/v0"
                 
@@ -941,14 +968,7 @@ with st.sidebar.expander("🔗 Live Trading 212 Sync", expanded=False):
             save_scenarios()
             st.success("Applied synced value to ISA balance and saved!")
             st.rerun()
-    if 't212_synced_value' in st.session_state:
-        sync_val = st.session_state['t212_synced_value']
-        st.metric("Live T212 Value", f"£{sync_val:,.2f}")
-        if st.button("Apply to Active Profile (ISA)"):
-            st.session_state.scenarios[selected_profile]["isa_bal"] = float(sync_val)
-            save_scenarios()
-            st.success("Applied synced value to ISA balance and saved!")
-            st.rerun()
+
 st.sidebar.header("📁 Profile & Scenario Manager")
 
 scenario_list = list(st.session_state.scenarios.keys())
@@ -980,7 +1000,7 @@ if selected_profile not in DEFAULT_PROFILES:
         del st.session_state.scenarios[selected_profile]
         save_scenarios()
         st.session_state.active_scenario_name = list(st.session_state.scenarios.keys())[0]
-        st.toast(f"Deleted profile '{selected_profile}'", icon="🗑️")
+        st.toast(f"Deleted profile '{selected_profile}'", icon="🗑️️")
         st.rerun()
 else:
     st.sidebar.caption("🔒 Default profile (cannot be deleted)")
@@ -1023,7 +1043,8 @@ with st.sidebar.form(key=f"scenario_form_{selected_profile}"):
         increase_date = st.date_input(
             "Increase Date",
             value=curr_data.get("increase_date", get_next_tax_year_start()),
-            min_value=date.today(),
+            min_value=date(2020, 1, 1),
+            max_value=date(2070, 12, 31),
             format="DD/MM/YYYY",
         )
         default_reduced_inc = curr_data.get("reduced_monthly_inc", curr_data["monthly_inc"])
@@ -1054,60 +1075,60 @@ with st.sidebar.form(key=f"scenario_form_{selected_profile}"):
         st.markdown("##### Lump Sum 1")
         ls1_amt = st.number_input("Lump Sum 1 Amount (£)", min_value=-1000000.0, value=float(curr_data.get("lump_sum_1_amt", 0.0)), step=1000.0, help="Enter a negative amount to simulate a withdrawal.")
         ls1_date = st.date_input("Lump Sum 1 Date", value=curr_data.get("lump_sum_1_date", get_next_tax_year_start()), min_value=date.today(), format="DD/MM/YYYY")
-        ls1_pot = st.selectbox("Lump Sum 1 Target Pot", options=pot_options, index=pot_options.index("Private Pension" if curr_data.get("lump_sum_1_pot") == "Workplace Pension" else curr_data.get("lump_sum_1_pot", "S&S ISA")))
+        ls1_pot = st.selectbox("Lump Sum 1 Target Pot", options=pot_options, index=pot_options.index("Private Pension" if curr_data.get("lump_sum_1_pot") == "Workplace Pension" else curr_data.get("lump_sum_1_pot", "S&S ISA")), key="ls1_pot_sel")
 
         st.markdown("##### Lump Sum 2")
         ls2_amt = st.number_input("Lump Sum 2 Amount (£)", min_value=-1000000.0, value=float(curr_data.get("lump_sum_2_amt", 0.0)), step=1000.0, help="Enter a negative amount to simulate a withdrawal.")
         ls2_date = st.date_input("Lump Sum 2 Date", value=curr_data.get("lump_sum_2_date", get_next_tax_year_start()), min_value=date.today(), format="DD/MM/YYYY")
-        ls2_pot = st.selectbox("Lump Sum 2 Target Pot", options=pot_options, index=pot_options.index("Private Pension" if curr_data.get("lump_sum_2_pot") == "Workplace Pension" else curr_data.get("lump_sum_2_pot", "S&S ISA")))
+        ls2_pot = st.selectbox("Lump Sum 2 Target Pot", options=pot_options, index=pot_options.index("Private Pension" if curr_data.get("lump_sum_2_pot") == "Workplace Pension" else curr_data.get("lump_sum_2_pot", "S&S ISA")), key="ls2_pot_sel")
 
         st.markdown("##### Lump Sum 3")
         ls3_amt = st.number_input("Lump Sum 3 Amount (£)", min_value=-1000000.0, value=float(curr_data.get("lump_sum_3_amt", 0.0)), step=1000.0, help="Enter a negative amount to simulate a withdrawal.")
         ls3_date = st.date_input("Lump Sum 3 Date", value=curr_data.get("lump_sum_3_date", get_next_tax_year_start()), min_value=date.today(), format="DD/MM/YYYY")
-        ls3_pot = st.selectbox("Lump Sum 3 Target Pot", options=pot_options, index=pot_options.index("Private Pension" if curr_data.get("lump_sum_3_pot") == "Workplace Pension" else curr_data.get("lump_sum_3_pot", "S&S ISA")))
+        ls3_pot = st.selectbox("Lump Sum 3 Target Pot", options=pot_options, index=pot_options.index("Private Pension" if curr_data.get("lump_sum_3_pot") == "Workplace Pension" else curr_data.get("lump_sum_3_pot", "S&S ISA")), key="ls3_pot_sel")
 
     with st.expander("🏛️ Gilts & Bonds (Up to 5)", expanded=False):
         max_gilt_maturity = date(date.today().year + 50, 12, 31)
 
         st.markdown("##### Gilt / Bond 1")
-        g1_amt = st.number_input("Gilt 1 Nominal Amount (£)", min_value=0.0, value=float(curr_data.get("gilt_1_amt", 0.0)), step=1000.0)
-        g1_price = st.number_input("Gilt 1 Purchase Price (%)", min_value=1.0, max_value=200.0, value=float(curr_data.get("gilt_1_price", 100.0)), step=0.5, help="100% means nominal amount equals cost.")
-        g1_p_date = st.date_input("Gilt 1 Purchase Date", value=curr_data.get("gilt_1_p_date", get_next_tax_year_start()), min_value=date.today(), max_value=max_gilt_maturity, format="DD/MM/YYYY")
-        g1_m_date = st.date_input("Gilt 1 Maturity Date", value=curr_data.get("gilt_1_m_date", get_next_tax_year_start()), min_value=date.today(), max_value=max_gilt_maturity, format="DD/MM/YYYY")
-        g1_pot = st.selectbox("Gilt 1 Source/Target Pot", options=pot_options, index=pot_options.index(curr_data.get("gilt_1_pot", "S&S ISA")), key="g1_pot_sel")
-        g1_coupon_pct = st.number_input("Gilt 1 Annual Coupon / Interest (%)", min_value=0.0, max_value=30.0, value=float(curr_data.get("gilt_1_coupon_pct", 0.0)), step=0.1)
+        g1_amt = st.number_input("Gilt 1 Nominal Amount (£)", min_value=0.0, value=float(curr_data.get("gilt_1_amt", 0.0)), step=1000.0, key="g1_amt_input")
+        g1_price = st.number_input("Gilt 1 Purchase Price (%)", min_value=1.0, max_value=200.0, value=float(curr_data.get("gilt_1_price", 100.0)), step=0.5, help="100% means nominal amount equals cost.", key="g1_price_input")
+        g1_p_date = st.date_input("Gilt 1 Purchase Date", value=curr_data.get("gilt_1_p_date", get_next_tax_year_start()), min_value=date.today(), max_value=max_gilt_maturity, format="DD/MM/YYYY", key="g1_p_date_input")
+        g1_m_date = st.date_input("Gilt 1 Maturity Date", value=curr_data.get("gilt_1_m_date", get_next_tax_year_start()), min_value=date.today(), max_value=max_gilt_maturity, format="DD/MM/YYYY", key="g1_m_date_input")
+        g1_pot = st.selectbox("Gilt 1 Source/Target Pot", options=pot_options, index=pot_options.index(curr_data.get("gilt_1_pot", "S&S ISA")) if curr_data.get("gilt_1_pot", "S&S ISA") in pot_options else 0, key="g1_pot_sel")
+        g1_coupon_pct = st.number_input("Gilt 1 Annual Coupon / Interest (%)", min_value=0.0, max_value=30.0, value=float(curr_data.get("gilt_1_coupon_pct", 0.0)), step=0.1, key="g1_coupon_input")
 
         st.markdown("##### Gilt / Bond 2")
-        g2_amt = st.number_input("Gilt 2 Nominal Amount (£)", min_value=0.0, value=float(curr_data.get("gilt_2_amt", 0.0)), step=1000.0)
-        g2_price = st.number_input("Gilt 2 Purchase Price (%)", min_value=1.0, max_value=200.0, value=float(curr_data.get("gilt_2_price", 100.0)), step=0.5)
-        g2_p_date = st.date_input("Gilt 2 Purchase Date", value=curr_data.get("gilt_2_p_date", get_next_tax_year_start()), min_value=date.today(), max_value=max_gilt_maturity, format="DD/MM/YYYY")
-        g2_m_date = st.date_input("Gilt 2 Maturity Date", value=curr_data.get("gilt_2_m_date", get_next_tax_year_start()), min_value=date.today(), max_value=max_gilt_maturity, format="DD/MM/YYYY")
-        g2_pot = st.selectbox("Gilt 2 Source/Target Pot", options=pot_options, index=pot_options.index(curr_data.get("gilt_2_pot", "S&S ISA")), key="g2_pot_sel")
-        g2_coupon_pct = st.number_input("Gilt 2 Annual Coupon / Interest (%)", min_value=0.0, max_value=30.0, value=float(curr_data.get("gilt_2_coupon_pct", 0.0)), step=0.1)
+        g2_amt = st.number_input("Gilt 2 Nominal Amount (£)", min_value=0.0, value=float(curr_data.get("gilt_2_amt", 0.0)), step=1000.0, key="g2_amt_input")
+        g2_price = st.number_input("Gilt 2 Purchase Price (%)", min_value=1.0, max_value=200.0, value=float(curr_data.get("gilt_2_price", 100.0)), step=0.5, key="g2_price_input")
+        g2_p_date = st.date_input("Gilt 2 Purchase Date", value=curr_data.get("gilt_2_p_date", get_next_tax_year_start()), min_value=date.today(), max_value=max_gilt_maturity, format="DD/MM/YYYY", key="g2_p_date_input")
+        g2_m_date = st.date_input("Gilt 2 Maturity Date", value=curr_data.get("gilt_2_m_date", get_next_tax_year_start()), min_value=date.today(), max_value=max_gilt_maturity, format="DD/MM/YYYY", key="g2_m_date_input")
+        g2_pot = st.selectbox("Gilt 2 Source/Target Pot", options=pot_options, index=pot_options.index(curr_data.get("gilt_2_pot", "S&S ISA")) if curr_data.get("gilt_2_pot", "S&S ISA") in pot_options else 0, key="g2_pot_sel")
+        g2_coupon_pct = st.number_input("Gilt 2 Annual Coupon / Interest (%)", min_value=0.0, max_value=30.0, value=float(curr_data.get("gilt_2_coupon_pct", 0.0)), step=0.1, key="g2_coupon_input")
 
         st.markdown("##### Gilt / Bond 3")
-        g3_amt = st.number_input("Gilt 3 Nominal Amount (£)", min_value=0.0, value=float(curr_data.get("gilt_3_amt", 0.0)), step=1000.0)
-        g3_price = st.number_input("Gilt 3 Purchase Price (%)", min_value=1.0, max_value=200.0, value=float(curr_data.get("gilt_3_price", 100.0)), step=0.5)
-        g3_p_date = st.date_input("Gilt 3 Purchase Date", value=curr_data.get("gilt_3_p_date", get_next_tax_year_start()), min_value=date.today(), max_value=max_gilt_maturity, format="DD/MM/YYYY")
-        g3_m_date = st.date_input("Gilt 3 Maturity Date", value=curr_data.get("gilt_3_m_date", get_next_tax_year_start()), min_value=date.today(), max_value=max_gilt_maturity, format="DD/MM/YYYY")
-        g3_pot = st.selectbox("Gilt 3 Source/Target Pot", options=pot_options, index=pot_options.index(curr_data.get("gilt_3_pot", "S&S ISA")), key="g3_pot_sel")
-        g3_coupon_pct = st.number_input("Gilt 3 Annual Coupon / Interest (%)", min_value=0.0, max_value=30.0, value=float(curr_data.get("gilt_3_coupon_pct", 0.0)), step=0.1)
+        g3_amt = st.number_input("Gilt 3 Nominal Amount (£)", min_value=0.0, value=float(curr_data.get("gilt_3_amt", 0.0)), step=1000.0, key="g3_amt_input")
+        g3_price = st.number_input("Gilt 3 Purchase Price (%)", min_value=1.0, max_value=200.0, value=float(curr_data.get("gilt_3_price", 100.0)), step=0.5, key="g3_price_input")
+        g3_p_date = st.date_input("Gilt 3 Purchase Date", value=curr_data.get("gilt_3_p_date", get_next_tax_year_start()), min_value=date.today(), max_value=max_gilt_maturity, format="DD/MM/YYYY", key="g3_p_date_input")
+        g3_m_date = st.date_input("Gilt 3 Maturity Date", value=curr_data.get("gilt_3_m_date", get_next_tax_year_start()), min_value=date.today(), max_value=max_gilt_maturity, format="DD/MM/YYYY", key="g3_m_date_input")
+        g3_pot = st.selectbox("Gilt 3 Source/Target Pot", options=pot_options, index=pot_options.index(curr_data.get("gilt_3_pot", "S&S ISA")) if curr_data.get("gilt_3_pot", "S&S ISA") in pot_options else 0, key="g3_pot_sel")
+        g3_coupon_pct = st.number_input("Gilt 3 Annual Coupon / Interest (%)", min_value=0.0, max_value=30.0, value=float(curr_data.get("gilt_3_coupon_pct", 0.0)), step=0.1, key="g3_coupon_input")
 
         st.markdown("##### Gilt / Bond 4")
-        g4_amt = st.number_input("Gilt 4 Nominal Amount (£)", min_value=0.0, value=float(curr_data.get("gilt_4_amt", 0.0)), step=1000.0)
-        g4_price = st.number_input("Gilt 4 Purchase Price (%)", min_value=1.0, max_value=200.0, value=float(curr_data.get("gilt_4_price", 100.0)), step=0.5)
-        g4_p_date = st.date_input("Gilt 4 Purchase Date", value=curr_data.get("gilt_4_p_date", get_next_tax_year_start()), min_value=date.today(), max_value=max_gilt_maturity, format="DD/MM/YYYY")
-        g4_m_date = st.date_input("Gilt 4 Maturity Date", value=curr_data.get("gilt_4_m_date", get_next_tax_year_start()), min_value=date.today(), max_value=max_gilt_maturity, format="DD/MM/YYYY")
-        g4_pot = st.selectbox("Gilt 4 Source/Target Pot", options=pot_options, index=pot_options.index(curr_data.get("gilt_4_pot", "S&S ISA")), key="g4_pot_sel")
-        g4_coupon_pct = st.number_input("Gilt 4 Annual Coupon / Interest (%)", min_value=0.0, max_value=30.0, value=float(curr_data.get("gilt_4_coupon_pct", 0.0)), step=0.1)
+        g4_amt = st.number_input("Gilt 4 Nominal Amount (£)", min_value=0.0, value=float(curr_data.get("gilt_4_amt", 0.0)), step=1000.0, key="g4_amt_input")
+        g4_price = st.number_input("Gilt 4 Purchase Price (%)", min_value=1.0, max_value=200.0, value=float(curr_data.get("gilt_4_price", 100.0)), step=0.5, key="g4_price_input")
+        g4_p_date = st.date_input("Gilt 4 Purchase Date", value=curr_data.get("gilt_4_p_date", get_next_tax_year_start()), min_value=date.today(), max_value=max_gilt_maturity, format="DD/MM/YYYY", key="g4_p_date_input")
+        g4_m_date = st.date_input("Gilt 4 Maturity Date", value=curr_data.get("gilt_4_m_date", get_next_tax_year_start()), min_value=date.today(), max_value=max_gilt_maturity, format="DD/MM/YYYY", key="g4_m_date_input")
+        g4_pot = st.selectbox("Gilt 4 Source/Target Pot", options=pot_options, index=pot_options.index(curr_data.get("gilt_4_pot", "S&S ISA")) if curr_data.get("gilt_4_pot", "S&S ISA") in pot_options else 0, key="g4_pot_sel")
+        g4_coupon_pct = st.number_input("Gilt 4 Annual Coupon / Interest (%)", min_value=0.0, max_value=30.0, value=float(curr_data.get("gilt_4_coupon_pct", 0.0)), step=0.1, key="g4_coupon_input")
 
         st.markdown("##### Gilt / Bond 5")
-        g5_amt = st.number_input("Gilt 5 Nominal Amount (£)", min_value=0.0, value=float(curr_data.get("gilt_5_amt", 0.0)), step=1000.0)
-        g5_price = st.number_input("Gilt 5 Purchase Price (%)", min_value=1.0, max_value=200.0, value=float(curr_data.get("gilt_5_price", 100.0)), step=0.5)
-        g5_p_date = st.date_input("Gilt 5 Purchase Date", value=curr_data.get("gilt_5_p_date", get_next_tax_year_start()), min_value=date.today(), max_value=max_gilt_maturity, format="DD/MM/YYYY")
-        g5_m_date = st.date_input("Gilt 5 Maturity Date", value=curr_data.get("gilt_5_m_date", get_next_tax_year_start()), min_value=date.today(), max_value=max_gilt_maturity, format="DD/MM/YYYY")
-        g5_pot = st.selectbox("Gilt 5 Source/Target Pot", options=pot_options, index=pot_options.index(curr_data.get("gilt_5_pot", "S&S ISA")), key="g5_pot_sel")
-        g5_coupon_pct = st.number_input("Gilt 5 Annual Coupon / Interest (%)", min_value=0.0, max_value=30.0, value=float(curr_data.get("gilt_5_coupon_pct", 0.0)), step=0.1)
+        g5_amt = st.number_input("Gilt 5 Nominal Amount (£)", min_value=0.0, value=float(curr_data.get("gilt_5_amt", 0.0)), step=1000.0, key="g5_amt_input")
+        g5_price = st.number_input("Gilt 5 Purchase Price (%)", min_value=1.0, max_value=200.0, value=float(curr_data.get("gilt_5_price", 100.0)), step=0.5, key="g5_price_input")
+        g5_p_date = st.date_input("Gilt 5 Purchase Date", value=curr_data.get("gilt_5_p_date", get_next_tax_year_start()), min_value=date.today(), max_value=max_gilt_maturity, format="DD/MM/YYYY", key="g5_p_date_input")
+        g5_m_date = st.date_input("Gilt 5 Maturity Date", value=curr_data.get("gilt_5_m_date", get_next_tax_year_start()), min_value=date.today(), max_value=max_gilt_maturity, format="DD/MM/YYYY", key="g5_m_date_input")
+        g5_pot = st.selectbox("Gilt 5 Source/Target Pot", options=pot_options, index=pot_options.index(curr_data.get("gilt_5_pot", "S&S ISA")) if curr_data.get("gilt_5_pot", "S&S ISA") in pot_options else 0, key="g5_pot_sel")
+        g5_coupon_pct = st.number_input("Gilt 5 Annual Coupon / Interest (%)", min_value=0.0, max_value=30.0, value=float(curr_data.get("gilt_5_coupon_pct", 0.0)), step=0.1, key="g5_coupon_input")
 
     try:
         max_crash_date = date(dob.year + 100, dob.month, dob.day)
@@ -1156,7 +1177,7 @@ with st.sidebar.form(key=f"scenario_form_{selected_profile}"):
             help="Check this if the entered annual figure is in today's money. It will grow by inflation until the start age before payments begin.",
         )
 
-    with st.expander("🏛️ State Pension", expanded=False):
+    with st.expander("🏛 State Pension", expanded=False):
         has_state_pension = st.checkbox("Include State Pension", value=curr_data.get("has_state_pension", True))
         state_pension_age = st.number_input("State Pension Start Age", min_value=60, max_value=75, value=int(curr_data.get("state_pension_age", 67)))
         state_pension_amount = st.number_input("State Pension Annual (£)", min_value=0.0, value=float(curr_data.get("state_pension_amount", 12548.0)), step=100.0)
@@ -1464,6 +1485,54 @@ table_column_config = {
 
 st.dataframe(active_df, column_config=table_column_config, height=670, use_container_width=True)
 
+# ----------------------------------------------------------------------
+# Narrative Explorer Section
+# ----------------------------------------------------------------------
+st.markdown("---")
+st.subheader("📖 Annual Income & Drawdown Narrative Explorer")
+
+year_options = active_df[x_col].tolist()
+selected_year_label = st.selectbox("Select a Year/Period to Inspect Narrative:", options=year_options)
+
+selected_row = active_df[active_df[x_col] == selected_year_label].iloc[0]
+
+age_val = int(selected_row["age"])
+desired_inc = int(selected_row["desired_annual_income"] if active_p["view_mode"] == "Tax Year" else selected_row["desired_monthly_income"] * 12)
+state_pen = int(selected_row["state_pension_income"] * (12 if active_p["view_mode"] != "Tax Year" else 1))
+annuity_inc = int(selected_row["annuity_income"])
+pot_drawn = int(selected_row["pot_income_drawn"] * (12 if active_p["view_mode"] != "Tax Year" else 1))
+tax_paid = int(selected_row["tax_paid"] * (12 if active_p["view_mode"] != "Tax Year" else 1))
+is_ret = selected_row["is_retired"]
+
+mult_factor = 1 if active_p["view_mode"] == "Tax Year" else 12
+draw_sipp_val = int(round(selected_row["draw_sipp"] * mult_factor))
+draw_wp_taxable_val = int(round(selected_row["draw_wp_taxable"] * mult_factor))
+draw_wp_taxfree_val = int(round(selected_row["draw_wp_taxfree"] * mult_factor))
+draw_isa_val = int(round(selected_row["draw_isa"] * mult_factor))
+draw_other_val = int(round(selected_row["draw_other"] * mult_factor))
+
+ncol1, ncol2, ncol3 = st.columns(3)
+ncol1.metric("Target Annual Income Needed", f"£{desired_inc:,}")
+ncol2.metric("Pot Drawdowns Required", f"£{pot_drawn:,}")
+ncol3.metric("Tax Paid", f"£{tax_paid:,}")
+
+if not is_ret:
+    st.info(f"**Status at Age {age_val}:** You are still in your **working phase** (pre-retirement). Regular monthly contributions are actively building your investment pots.")
+else:
+    guaranteed_total = state_pen + annuity_inc
+    st.success(f"""
+    **Retirement Narrative for {selected_year_label} (Age {age_val}):**
+    * **Target Income Goal:** You required **£{desired_inc:,}** net for the year.
+    * **Guaranteed Income:** **£{guaranteed_total:,}** was covered automatically (£{annuity_inc:,} from your Annuity/DB pension and £{state_pen:,} from your State Pension).
+    * **Investment Pot Drawdowns:** To cover the remaining shortfall, a total of **£{pot_drawn:,}** was systematically drawn across your pots:
+      * **SIPP:** £{draw_sipp_val:,}
+      * **Private Pension (Taxable):** £{draw_wp_taxable_val:,}
+      * **Private Pension (Tax-Free):** £{draw_wp_taxfree_val:,}
+      * **Stocks & Shares ISA:** £{draw_isa_val:,}
+      * **Other Investments:** £{draw_other_val:,}
+    * **Tax Summary:** An estimated **£{tax_paid:,}** in income tax was incurred and paid during this period.
+    """)
+
 st.markdown("---")
 
 # ----------------------------------------------------------------------
@@ -1536,7 +1605,7 @@ with col_sec1:
 
         st.markdown("---")
         
-        hcol1, hcol2, hcol3, hcol4, hcol5 = st.columns([3, 2, 2, 2, 1])
+        hcol1, hcol2, hcol3, hcol4, hcol5, hcol6 = st.columns([3, 2, 2, 2, 2, 1])
         with hcol1:
             st.markdown("**Expenditure Item**")
         with hcol2:
@@ -1546,12 +1615,14 @@ with col_sec1:
         with hcol4:
             st.markdown("**Annual Amount**")
         with hcol5:
+            st.markdown("**% of Budget**")
+        with hcol6:
             st.markdown("")
 
         surviving_budget_items = []
         for i, item in enumerate(budget_items):
             item_id = item["id"]
-            cols = st.columns([3, 2, 2, 2, 1])
+            cols = st.columns([3, 2, 2, 2, 2, 1])
             with cols[0]:
                 item_val = st.text_input("Expenditure Item", value=item.get("item", ""), key=f"budget_item_{selected_profile}_{item_id}", label_visibility="collapsed")
             with cols[1]:
@@ -1579,6 +1650,9 @@ with col_sec1:
             with cols[3]:
                 annual_val = st.number_input("Annual Amount", value=float(item.get("annual_amount", item.get("amount", 0.0) * 12.0)), step=100.0, key=annual_key, on_change=make_sync_annual(), label_visibility="collapsed")
             with cols[4]:
+                pct_val = (amt_val / total_budget_outgoings * 100.0) if total_budget_outgoings > 0 else 0.0
+                st.markdown(f"**{pct_val:.1f}%**")
+            with cols[5]:
                 remove_clicked = st.button("🗑️", key=f"del_budget_{selected_profile}_{item_id}")
             
             if remove_clicked:
