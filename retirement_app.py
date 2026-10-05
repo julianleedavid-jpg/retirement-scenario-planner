@@ -690,6 +690,12 @@ class RetirementEngine:
             other += (other_growth - other_tax_on_growth)
 
             monthly_drawn_from_pots = 0.0
+            draw_sipp_amt = 0.0
+            draw_wp_taxable_amt = 0.0
+            draw_wp_taxfree_amt = 0.0
+            draw_isa_amt = 0.0
+            draw_other_amt = 0.0
+
             state_pension_monthly = 0.0
             annuity_monthly = 0.0
             tax_paid = 0.0
@@ -767,6 +773,7 @@ class RetirementEngine:
                         draw = min(other, needed_net)
                         other -= draw
                         needed_net -= draw
+                        draw_other_amt += draw
                         monthly_drawn_from_pots += draw
                 else:
                     allowance_rem = max(
@@ -777,10 +784,14 @@ class RetirementEngine:
                         tot_taxable = sipp + wp_taxable
                         draw = min(tot_taxable, target)
                         if draw > 0:
-                            s_share = sipp / tot_taxable
-                            wp_share = wp_taxable / tot_taxable
-                            sipp -= draw * s_share
-                            wp_taxable -= draw * wp_share
+                            s_share = (sipp / tot_taxable) if tot_taxable > 0 else 0.0
+                            wp_share = (wp_taxable / tot_taxable) if tot_taxable > 0 else 0.0
+                            s_draw = draw * s_share
+                            wp_draw = draw * wp_share
+                            sipp -= s_draw
+                            wp_taxable -= wp_draw
+                            draw_sipp_amt += s_draw
+                            draw_wp_taxable_amt += wp_draw
                             taxable_income_this_tax_year += draw
                             needed_net -= draw
                             monthly_drawn_from_pots += draw
@@ -789,12 +800,14 @@ class RetirementEngine:
                         draw = min(isa, needed_net)
                         isa -= draw
                         needed_net -= draw
+                        draw_isa_amt += draw
                         monthly_drawn_from_pots += draw
 
                     if needed_net > 0 and wp_tax_free > 0:
                         draw = min(wp_tax_free, needed_net)
                         wp_tax_free -= draw
                         needed_net -= draw
+                        draw_wp_taxfree_amt += draw
                         monthly_drawn_from_pots += draw
 
                     tot_taxable = sipp + wp_taxable
@@ -802,10 +815,14 @@ class RetirementEngine:
                         gross_needed = needed_net / (1.0 - self.BASIC_TAX_RATE)
                         gross_draw = min(tot_taxable, gross_needed)
                         if gross_draw > 0:
-                            s_share = sipp / tot_taxable
-                            wp_share = wp_taxable / tot_taxable
-                            sipp -= gross_draw * s_share
-                            wp_taxable -= gross_draw * wp_share
+                            s_share = (sipp / tot_taxable) if tot_taxable > 0 else 0.0
+                            wp_share = (wp_taxable / tot_taxable) if tot_taxable > 0 else 0.0
+                            s_draw = gross_draw * s_share
+                            wp_draw = gross_draw * wp_share
+                            sipp -= s_draw
+                            wp_taxable -= wp_draw
+                            draw_sipp_amt += s_draw
+                            draw_wp_taxable_amt += wp_draw
                             net_rec = gross_draw * (1.0 - self.BASIC_TAX_RATE)
                             tax = gross_draw * self.BASIC_TAX_RATE
                             taxable_income_this_tax_year += gross_draw
@@ -817,6 +834,7 @@ class RetirementEngine:
                         draw = min(other, needed_net)
                         other -= draw
                         needed_net -= draw
+                        draw_other_amt += draw
                         monthly_drawn_from_pots += draw
 
                 if needed_net > 0:
@@ -846,6 +864,11 @@ class RetirementEngine:
                 "annuity_income": int(round(current_annual_annuity if is_retired else 0.0)),
                 "state_pension_income": int(round(state_pension_monthly)),
                 "pot_income_drawn": int(round(monthly_drawn_from_pots)),
+                "draw_sipp": draw_sipp_amt,
+                "draw_wp_taxable": draw_wp_taxable_amt,
+                "draw_wp_taxfree": draw_wp_taxfree_amt,
+                "draw_isa": draw_isa_amt,
+                "draw_other": draw_other_amt,
                 "monthly_net_income": int(round(total_monthly_income)),
                 "tax_paid": int(round(tax_paid)),
             })
@@ -861,6 +884,8 @@ class RetirementEngine:
                 "other_investment": "last", "investment_income": "sum",
                 "total_portfolio": "last", "annuity_income": "last",
                 "state_pension_income": "sum", "pot_income_drawn": "sum",
+                "draw_sipp": "sum", "draw_wp_taxable": "sum", "draw_wp_taxfree": "sum",
+                "draw_isa": "sum", "draw_other": "sum",
                 "monthly_net_income": "sum", "tax_paid": "sum",
             })
             .reset_index()
@@ -876,6 +901,8 @@ class RetirementEngine:
                 "other_investment": "last", "investment_income": "sum",
                 "total_portfolio": "last", "annuity_income": "last",
                 "state_pension_income": "sum", "pot_income_drawn": "sum",
+                "draw_sipp": "sum", "draw_wp_taxable": "sum", "draw_wp_taxfree": "sum",
+                "draw_isa": "sum", "draw_other": "sum",
                 "monthly_net_income": "sum", "tax_paid": "sum",
             })
             .reset_index()
@@ -887,7 +914,8 @@ class RetirementEngine:
             "desired_monthly_income", "desired_annual_income", "sipp",
             "private_pension", "isa", "other_investment", "investment_income",
             "total_portfolio", "annuity_income", "state_pension_income",
-            "pot_income_drawn", "monthly_net_income", "tax_paid",
+            "pot_income_drawn", "draw_sipp", "draw_wp_taxable", "draw_wp_taxfree",
+            "draw_isa", "draw_other", "monthly_net_income", "tax_paid",
         ]
         monthly_df[num_cols] = monthly_df[num_cols].round(0).astype(int)
         tax_year_df[num_cols] = tax_year_df[num_cols].round(0).astype(int)
@@ -972,7 +1000,7 @@ if selected_profile not in DEFAULT_PROFILES:
         del st.session_state.scenarios[selected_profile]
         save_scenarios()
         st.session_state.active_scenario_name = list(st.session_state.scenarios.keys())[0]
-        st.toast(f"Deleted profile '{selected_profile}'", icon="🗑️")
+        st.toast(f"Deleted profile '{selected_profile}'", icon="🗑️️")
         st.rerun()
 else:
     st.sidebar.caption("🔒 Default profile (cannot be deleted)")
@@ -1476,6 +1504,13 @@ pot_drawn = int(selected_row["pot_income_drawn"] * (12 if active_p["view_mode"] 
 tax_paid = int(selected_row["tax_paid"] * (12 if active_p["view_mode"] != "Tax Year" else 1))
 is_ret = selected_row["is_retired"]
 
+mult_factor = 1 if active_p["view_mode"] == "Tax Year" else 12
+draw_sipp_val = int(round(selected_row["draw_sipp"] * mult_factor))
+draw_wp_taxable_val = int(round(selected_row["draw_wp_taxable"] * mult_factor))
+draw_wp_taxfree_val = int(round(selected_row["draw_wp_taxfree"] * mult_factor))
+draw_isa_val = int(round(selected_row["draw_isa"] * mult_factor))
+draw_other_val = int(round(selected_row["draw_other"] * mult_factor))
+
 ncol1, ncol2, ncol3 = st.columns(3)
 ncol1.metric("Target Annual Income Needed", f"£{desired_inc:,}")
 ncol2.metric("Pot Drawdowns Required", f"£{pot_drawn:,}")
@@ -1489,7 +1524,12 @@ else:
     **Retirement Narrative for {selected_year_label} (Age {age_val}):**
     * **Target Income Goal:** You required **£{desired_inc:,}** net for the year.
     * **Guaranteed Income:** **£{guaranteed_total:,}** was covered automatically (£{annuity_inc:,} from your Annuity/DB pension and £{state_pen:,} from your State Pension).
-    * **Investment Pot Drawdowns:** To cover the remaining shortfall, a total of **£{pot_drawn:,}** was systematically drawn from your available pots according to your tax-efficient hierarchy rules.
+    * **Investment Pot Drawdowns:** To cover the remaining shortfall, a total of **£{pot_drawn:,}** was systematically drawn across your pots:
+      * **SIPP:** £{draw_sipp_val:,}
+      * **Private Pension (Taxable):** £{draw_wp_taxable_val:,}
+      * **Private Pension (Tax-Free):** £{draw_wp_taxfree_val:,}
+      * **Stocks & Shares ISA:** £{draw_isa_val:,}
+      * **Other Investments:** £{draw_other_val:,}
     * **Tax Summary:** An estimated **£{tax_paid:,}** in income tax was incurred and paid during this period.
     """)
 
