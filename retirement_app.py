@@ -560,21 +560,17 @@ class RetirementEngine:
 
             # Nuvos Active Accrual vs Inflation Revaluation Check
             if self.scenario.has_nuvos_pension:
-                # Determine if active accrual is still happening (stops on pause date if enabled, or at retirement age)
                 if self.scenario.nuvos_pause_enabled:
                     active_accrual_active = current_date <= min(self.scenario.nuvos_pause_date, ret_date_limit)
                 else:
                     active_accrual_active = current_date <= ret_date_limit
 
-                # Revaluation continues every April 1st until pension payout starts at Target Retirement Age
                 revaluation_active = current_date < ret_date_limit
 
                 if current_date > start_date and current_date.day == 1 and current_date.month == 4 and revaluation_active:
-                    # Annual inflation revaluation of existing accumulated pot
                     nuvos_accumulated *= (1.0 + self.scenario.inflation_rate)
                     
                     if active_accrual_active:
-                        # Salary indexation and new 2.3% active accrual
                         current_nuvos_salary *= (1.0 + self.scenario.inflation_rate)
                         new_accrual = current_nuvos_salary * (self.scenario.nuvos_accrual_rate / 100.0)
                         nuvos_accumulated += new_accrual
@@ -980,6 +976,29 @@ class RetirementEngine:
         tax_year_df[num_cols] = tax_year_df[num_cols].round(0).astype(int)
 
         return monthly_df, tax_year_df
+
+
+def find_minimum_retirement_age(dob: date, monthly_income: float, base_scenario: Scenario) -> int:
+    current_age = (
+        date.today().year
+        - dob.year
+        - ((date.today().month, date.today().day) < (dob.month, dob.day))
+    )
+    min_test_age = max(50, current_age)
+    
+    for test_age in range(min_test_age, 86):
+        test_engine = RetirementEngine(
+            dob=dob,
+            retirement_age=test_age,
+            monthly_income=monthly_income,
+            scenario=base_scenario
+        )
+        _, t_df = test_engine.run_simulation()
+        ret_df = t_df[t_df["is_retired"]]
+        depleted = ret_df[ret_df["total_portfolio"] <= 0]
+        if depleted.empty:
+            return test_age
+    return None
 
 
 # ----------------------------------------------------------------------
@@ -1526,6 +1545,9 @@ else:
     final_bal = int(round(active_df.iloc[-1]["total_portfolio"]))
     depleted_val_str = f"£{final_bal:,}"
 
+min_ret_age = find_minimum_retirement_age(active_p["dob"], active_p["monthly_inc"], scenario_obj)
+min_ret_age_str = f"Age {min_ret_age}" if min_ret_age is not None else "N/A (>85)"
+
 st.subheader(f"Showing Profile: **{selected_profile}**")
 
 st.markdown(
@@ -1542,13 +1564,14 @@ st.markdown(
     unsafe_allow_html=True,
 )
 
-col1, col2, col3, col4, col5, col6 = st.columns(6)
+col1, col2, col3, col4, col5, col6, col7 = st.columns(7)
 col1.metric("Current Age", f"{current_age}")
 col2.metric("Target Retirement Age", f"{int(active_p['ret_age'])}")
 col3.metric("Peak Portfolio Value", f"£{int(round(active_df['total_portfolio'].max())):,}")
 col4.metric("Desired Monthly Income", f"£{int(round(active_p['monthly_inc'])):,}")
 col5.metric("Desired Annual Income", f"£{annual_inc:,}")
 col6.metric("Portfolio Depleted / Age 100", depleted_val_str)
+col7.metric("Minimum retirement age for scenario", min_ret_age_str)
 
 st.markdown("---")
 
