@@ -1219,7 +1219,7 @@ with st.sidebar.form(key=f"scenario_form_{selected_profile}"):
             "Nuvos Pause / Leave Scheme Date",
             value=curr_data.get("nuvos_pause_date", get_next_tax_year_start()),
             min_value=date(2020, 1, 1),
-            max_value=date(2070, 12, 31),
+            max_value=date(2051, 12, 31),
             format="DD/MM/YYYY",
             help="Date Karen leaves the scheme or active contributions/revaluation pauses, after which it remains deferred until age 65."
         )
@@ -1627,3 +1627,225 @@ with col_sec1:
         for item in raw_budget_items:
             item_id = item.get("id", str(uuid.uuid4()))
             item["id"] = item_id
+            
+            item_val = st.session_state.get(f"budget_item_{selected_profile}_{item_id}", item.get("item", item.get("category", "")))
+            month_val = st.session_state.get(f"budget_month_{selected_profile}_{item_id}", item.get("month_paid", "Monthly"))
+            
+            default_monthly = float(item.get("amount", 0.0))
+            default_annual = float(item.get("annual_amount", default_monthly * 12.0))
+            
+            monthly_key = f"budget_amt_{selected_profile}_{item_id}"
+            annual_key = f"budget_annual_{selected_profile}_{item_id}"
+            
+            monthly_val = st.session_state.get(monthly_key, default_monthly)
+            annual_val = st.session_state.get(annual_key, default_annual)
+            
+            current_items.append({"id": item_id, "item": item_val, "month_paid": month_val, "amount": monthly_val, "annual_amount": annual_val})
+
+        if st.session_state[sort_key_state] == "Alphabetical":
+            budget_items = sorted(current_items, key=lambda x: str(x.get("item", "")).lower())
+        else:
+            budget_items = sorted(current_items, key=lambda x: float(x.get("amount", 0.0)), reverse=True)
+
+        total_budget_outgoings = sum(item.get("amount", 0.0) for item in budget_items)
+        desired_inc = float(active_p["monthly_inc"])
+        budget_variance = desired_inc - total_budget_outgoings
+
+        bcol1, bcol2, bcol3 = st.columns(3)
+        bcol1.metric("Total Outgoings", f"£{total_budget_outgoings:,.2f}")
+        bcol2.metric("Desired Income", f"£{desired_inc:,.2f}")
+        bcol3.metric("Monthly Buffer / Surplus", f"£{budget_variance:,.2f}", delta=f"£{budget_variance:,.2f}")
+
+        st.markdown("---")
+        
+        hcol1, hcol2, hcol3, hcol4, hcol5, hcol6 = st.columns([3, 2, 2, 2, 2, 1])
+        with hcol1:
+            st.markdown("**Expenditure Item**")
+        with hcol2:
+            st.markdown("**Month Paid**")
+        with hcol3:
+            st.markdown("**Monthly Amount**")
+        with hcol4:
+            st.markdown("**Annual Amount**")
+        with hcol5:
+            st.markdown("**% of Budget**")
+        with hcol6:
+            st.markdown("")
+
+        surviving_budget_items = []
+        for i, item in enumerate(budget_items):
+            item_id = item["id"]
+            cols = st.columns([3, 2, 2, 2, 2, 1])
+            with cols[0]:
+                item_val = st.text_input("Expenditure Item", value=item.get("item", ""), key=f"budget_item_{selected_profile}_{item_id}", label_visibility="collapsed")
+            with cols[1]:
+                current_month_val = item.get("month_paid", "Monthly")
+                month_idx = MONTH_OPTIONS.index(current_month_val) if current_month_val in MONTH_OPTIONS else 0
+                month_val = st.selectbox("Month Paid", options=MONTH_OPTIONS, index=month_idx, key=f"budget_month_{selected_profile}_{item_id}", label_visibility="collapsed")
+            
+            monthly_key = f"budget_amt_{selected_profile}_{item_id}"
+            annual_key = f"budget_annual_{selected_profile}_{item_id}"
+
+            def make_sync_monthly(a_k=annual_key, m_k=monthly_key):
+                def sync():
+                    if a_k in st.session_state and m_k in st.session_state:
+                        st.session_state[a_k] = st.session_state[m_k] * 12.0
+                return sync
+
+            def make_sync_annual(a_k=annual_key, m_k=monthly_key):
+                def sync():
+                    if a_k in st.session_state and m_k in st.session_state:
+                        st.session_state[m_k] = st.session_state[a_k] / 12.0
+                return sync
+
+            with cols[2]:
+                amt_val = st.number_input("Monthly Amount", value=float(item.get("amount", 0.0)), step=25.0, key=monthly_key, on_change=make_sync_monthly(), label_visibility="collapsed")
+            with cols[3]:
+                annual_val = st.number_input("Annual Amount", value=float(item.get("annual_amount", item.get("amount", 0.0) * 12.0)), step=100.0, key=annual_key, on_change=make_sync_annual(), label_visibility="collapsed")
+            with cols[4]:
+                pct_val = (amt_val / total_budget_outgoings * 100.0) if total_budget_outgoings > 0 else 0.0
+                st.markdown(f"**{pct_val:.1f}%**")
+            with cols[5]:
+                remove_clicked = st.button("🗑️", key=f"del_budget_{selected_profile}_{item_id}")
+            
+            if remove_clicked:
+                for b_item in budget_items:
+                    b_id = b_item.get("id", "")
+                    st.session_state.pop(f"budget_item_{selected_profile}_{b_id}", None)
+                    st.session_state.pop(f"budget_month_{selected_profile}_{b_id}", None)
+                    st.session_state.pop(f"budget_amt_{selected_profile}_{b_id}", None)
+                    st.session_state.pop(f"budget_annual_{selected_profile}_{b_id}", None)
+                budget_items.pop(i)
+                st.session_state.scenarios[selected_profile]["budget_items"] = budget_items
+                save_scenarios()
+                st.rerun()
+            else:
+                surviving_budget_items.append({"id": item_id, "item": item_val, "month_paid": month_val, "amount": amt_val, "annual_amount": annual_val})
+
+        st.markdown("##### Add New Expenditure Item")
+        new_item_key = f"new_item_name_{selected_profile}"
+        new_month_key = f"new_month_val_{selected_profile}"
+        new_amt_key = f"new_amt_val_{selected_profile}"
+        new_annual_key = f"new_annual_val_{selected_profile}"
+
+        new_item_name = st.text_input("New Expenditure Item Name", placeholder="e.g. Insurance, Gym...", key=new_item_key)
+        new_month = st.selectbox("New Month Paid", options=MONTH_OPTIONS, key=new_month_key)
+        new_amt = st.number_input("New Monthly Amount (£)", min_value=0.0, value=0.0, step=25.0, key=new_amt_key)
+        new_annual = st.number_input("New Annual Amount (£)", min_value=0.0, value=0.0, step=100.0, key=new_annual_key)
+
+        if st.button("➕ Add Item to Budget", key=f"add_budget_btn_{selected_profile}"):
+            if new_item_name and new_item_name.strip():
+                final_monthly = new_amt
+                final_annual = new_annual if new_annual > 0 else new_amt * 12.0
+                if new_annual > 0 and new_amt == 0:
+                    final_monthly = new_annual / 12.0
+
+                for b_item in surviving_budget_items:
+                    b_id = b_item.get("id", "")
+                    st.session_state.pop(f"budget_item_{selected_profile}_{b_id}", None)
+                    st.session_state.pop(f"budget_month_{selected_profile}_{b_id}", None)
+                    st.session_state.pop(f"budget_amt_{selected_profile}_{b_id}", None)
+                    st.session_state.pop(f"budget_annual_{selected_profile}_{b_id}", None)
+
+                surviving_budget_items.append({
+                    "id": str(uuid.uuid4()),
+                    "item": new_item_name.strip(),
+                    "month_paid": new_month,
+                    "amount": final_monthly,
+                    "annual_amount": final_annual
+                })
+                if st.session_state[sort_key_state] == "Alphabetical":
+                    surviving_budget_items = sorted(surviving_budget_items, key=lambda x: str(x.get("item", "")).lower())
+                else:
+                    surviving_budget_items = sorted(surviving_budget_items, key=lambda x: float(x.get("amount", 0.0)), reverse=True)
+                st.session_state.scenarios[selected_profile]["budget_items"] = surviving_budget_items
+                save_scenarios()
+                st.session_state.pop(new_item_key, None)
+                st.session_state.pop(new_amt_key, None)
+                st.session_state.pop(new_annual_key, None)
+                st.success("Item added!")
+                st.rerun()
+            else:
+                st.warning("Please enter an expenditure item name.")
+
+        if st.button("💾 Save Budget Changes", key=f"save_budget_btn_{selected_profile}"):
+            for b_item in surviving_budget_items:
+                b_id = b_item.get("id", "")
+                st.session_state.pop(f"budget_item_{selected_profile}_{b_id}", None)
+                st.session_state.pop(f"budget_month_{selected_profile}_{b_id}", None)
+                st.session_state.pop(f"budget_amt_{selected_profile}_{b_id}", None)
+                st.session_state.pop(f"budget_annual_{selected_profile}_{b_id}", None)
+
+            if st.session_state[sort_key_state] == "Alphabetical":
+                surviving_budget_items = sorted(surviving_budget_items, key=lambda x: str(x.get("item", "")).lower())
+            else:
+                surviving_budget_items = sorted(surviving_budget_items, key=lambda x: float(x.get("amount", 0.0)), reverse=True)
+            st.session_state.scenarios[selected_profile]["budget_items"] = surviving_budget_items
+            save_scenarios()
+            st.toast(f"Budget saved for profile '{selected_profile}'!", icon="💾")
+            st.rerun()
+
+with col_sec2:
+    with st.expander("📝 Custom Profile Notes", expanded=False):
+        notes_key = f"notes_input_{selected_profile}"
+        user_notes = st.text_area(
+            "Notes & Key Assumptions for this Profile:",
+            value=active_p.get("notes", ""),
+            height=180,
+            key=notes_key,
+            placeholder="Type any custom notes, reminders, or scenario assumptions here...",
+        )
+        if st.button("💾 Save Notes", key=f"save_notes_btn_{selected_profile}"):
+            st.session_state.scenarios[selected_profile]["notes"] = user_notes
+            save_scenarios()
+            st.toast(f"Notes saved for profile '{selected_profile}'!", icon="💾")
+
+st.markdown("---")
+
+col_notes1, col_notes2 = st.columns(2)
+
+with col_notes1:
+    with st.expander("📖 Drawdown Priorities & Engine Logic Notes"):
+        st.markdown("""
+        ### Post-Retirement Drawdown Priorities & Rules
+
+        This engine applies strict, tax-efficient drawdown rules in a defined sequence on the 1st of every month:
+
+        1. **Guaranteed Income First (Annuity, Nuvos & State Pension):**
+           * **Annuities / DB / Nuvos Pensions:** Annual pension payments are applied first and increase with inflation (or remain flat if level) after Year 1. Nuvos accumulates dynamically with inflation until your chosen pause date, and pays out at normal pension age (65).
+           * **State Pension:** Applied automatically once you reach your configured State Pension age, escalating annually by your growth input.
+           * **Excess Income Recycling:** If guaranteed income exceeds your target inflation-adjusted monthly income, the surplus is automatically deposited into your **S&S ISA** (up to the **£20,000/year** limit), with any remaining excess directed to **Other Investments**.
+
+        2. **Market Stress Buffer Strategy (> 5% Crash Trigger):**
+           * If a market crash of **> 5%** occurs (configurable at any age up to 100), the engine enters a **2-year recovery window**.
+           * During recovery, equity pots (**SIPP**, **Private Pension**, **ISA**) are protected from panic sell-offs.
+           * **Income Reduction Rule:** Your target monthly income is automatically reduced to match the **State Pension amount** calculated at the date of the crash.
+           * **Post-Recovery:** After the 2-year window expires, your desired monthly income resumes at its full inflation-adjusted level.
+
+        3. **Standard Tax-Optimized Drawdown Hierarchy:**
+           When guaranteed income is insufficient, the required shortfall is satisfied using the following priority order:
+           * **Priority 1 (Personal Allowance Utilization):** Draws taxable pensions (**SIPP** and **75% Private Pension**) up to the remaining UK Personal Allowance threshold (**£12,570/year**) to receive income **100% tax-free**.
+           * **Priority 2 (Tax-Free ISA Capital):** Draws from **S&S ISA** to fulfill remaining income needs without incurring income tax.
+           * **Priority 3 (Tax-Free Pension Capital):** Draws from the tax-free portion (**25% Private Pension**).
+           * **Priority 4 (Basic Rate Taxable Pensions):** Draws taxable pensions above the Personal Allowance, applying basic-rate income tax (**20%**) to calculate gross withdrawals.
+           * **Priority 5 (Other Investments Fallback):** Draws remaining needs from non-registered/taxable investments.
+        """)
+
+with col_notes2:
+    with st.expander("📚 Historical Market Crash & Recovery Reference Data"):
+        st.markdown("""
+        ### Top 10 Global Market Crashes & Recovery Timelines
+        
+        | # | Event & Timeline | S&P 500 Decline (%) | S&P 500 Recovery Time | FTSE 100 Decline (%) | FTSE 100 Recovery Time | Primary Driver |
+        |---|---|---|---|---|---|---|
+        | **1** | **Wall Street Crash** *(1929–1932)* | **-86.2%** | **~25.2 years** *(Nov 1954)* | **N/A** *(FT Ord: ~24 yrs)* | **N/A** | Speculative equity bubble, margin leverage, banking panics |
+        | **2** | **OPEC Oil Shock** *(1973–1974)* | **-48.2%** | **~7.5 years** *(Jul 1980)* | **N/A** *(FT Ord: ~3.5 yrs)* | **N/A** | Arab oil embargo, high inflation, Bretton Woods collapse |
+        | **3** | **Black Monday** *(1987)* | **-33.5%** | **~1.8 years** *(Jul 1989)* | **-36.8%** | **~2.1 years** *(Nov 1989)* | Automated program trading, valuation concerns |
+        | **4** | **Gulf War Crash** *(1990)* | **-19.9%** | **~6 months** *(Feb 1991)* | **-21.8%** | **~7 months** *(Feb 1991)* | Iraqi invasion of Kuwait, oil price spike, US recession |
+        | **5** | **Russian Debt & LTCM** *(1998)* | **-19.3%** | **~3 months** *(Nov 1998)* | **-21.7%** | **~6 months** *(Feb 1999)* | Russian sovereign debt default, LTCM hedge fund collapse |
+        | **6** | **Dot-Com Bubble Burst** *(2000–2003)* | **-49.1%** | **~7.2 years** *(May 2007)* | **-52.6%** | **~7.8 years** *(Nov 2007)* | Tech overvaluation, corporate accounting scandals |
+        | **7** | **Global Financial Crisis** *(2007–2009)* | **-56.8%** | **~5.5 years** *(Mar 2013)* | **-48.3%** | **~7.3 years** *(Feb 2015)* | Subprime mortgage collapse, Lehman Brothers collapse |
+        | **8** | **European Debt Crisis** *(2011)* | **-19.4%** | **~6 months** *(Feb 2012)* | **-20.2%** | **~1.5 years** *(Feb 2013)* | Eurozone debt fears (Greece/Italy), US credit downgrade |
+        | **9** | **COVID-19 Pandemic** *(2020)* | **-33.9%** | **~5 months** *(Aug 2020)* | **-34.8%** | **~2.8 years** *(Jan 2023)* | Global lockdowns, economic shutdown, pandemic uncertainty |
+        | **10** | **Inflation & Rate Hikes** *(2022)* | **-25.4%** | **~2.2 years** *(Jan 2024)* | **-10.3%** | **~4 months** *(Feb 2023)* | Post-pandemic inflation spike, aggressive rate hikes |
+        """)
