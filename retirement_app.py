@@ -91,6 +91,7 @@ DEFAULT_PROFILES = {
         "inflate_annuity_to_start": False,
         "has_nuvos_pension": False,
         "nuvos_annual": 15929.31,
+        "nuvos_pause_enabled": True,
         "nuvos_pause_date": get_next_tax_year_start(),
         "nuvos_salary": 35000.0,
         "nuvos_accrual_rate": 2.3,
@@ -177,6 +178,7 @@ DEFAULT_PROFILES = {
         "inflate_annuity_to_start": False,
         "has_nuvos_pension": True,
         "nuvos_annual": 15929.31,
+        "nuvos_pause_enabled": True,
         "nuvos_pause_date": date(2031, 4, 6),
         "nuvos_salary": 35000.0,
         "nuvos_accrual_rate": 2.3,
@@ -389,6 +391,7 @@ class Scenario:
     inflate_annuity_to_start: bool = False
     has_nuvos_pension: bool = False
     nuvos_annual: float = 15929.31
+    nuvos_pause_enabled: bool = True
     nuvos_pause_date: date = field(default_factory=get_next_tax_year_start)
     nuvos_salary: float = 35000.0
     nuvos_accrual_rate: float = 2.3
@@ -535,10 +538,15 @@ class RetirementEngine:
             years_to_start = (annuity_start_date - start_date).days / 365.25
             base_annuity *= ((1.0 + self.scenario.inflation_rate) ** max(0.0, years_to_start))
 
-        # Dynamic Nuvos Pension State Tracker with Active Accrual
+        # Dynamic Nuvos Pension State Tracker with Active Accrual & Revaluation
         nuvos_baseline = self.scenario.nuvos_annual if self.scenario.has_nuvos_pension else 0.0
         nuvos_accumulated = nuvos_baseline
         current_nuvos_salary = self.scenario.nuvos_salary
+
+        try:
+            ret_date_limit = date(self.dob.year + self.retirement_age, self.dob.month, self.dob.day)
+        except ValueError:
+            ret_date_limit = date(self.dob.year + self.retirement_age, 2, 28)
 
         while current_date <= target_100_date:
             age = self._calculate_age(self.dob, current_date)
@@ -550,22 +558,26 @@ class RetirementEngine:
                 isa_credited_this_tax_year = 0.0
                 last_tax_year = current_tax_year
 
-            # Dynamically calculate Nuvos active accrual & revaluation up to pause date (and capped at retirement age)
-            try:
-                ret_date_limit = date(self.dob.year + self.retirement_age, self.dob.month, self.dob.day)
-            except ValueError:
-                ret_date_limit = date(self.dob.year + self.retirement_age, 2, 28)
-            effective_nuvos_pause = min(self.scenario.nuvos_pause_date, ret_date_limit)
+            # Nuvos Active Accrual vs Inflation Revaluation Check
+            if self.scenario.has_nuvos_pension:
+                # Determine if active accrual is still happening (stops on pause date if enabled, or at retirement age)
+                if self.scenario.nuvos_pause_enabled:
+                    active_accrual_active = current_date <= min(self.scenario.nuvos_pause_date, ret_date_limit)
+                else:
+                    active_accrual_active = current_date <= ret_date_limit
 
-            if self.scenario.has_nuvos_pension and current_date <= effective_nuvos_pause:
-                if current_date > start_date and current_date.day == 1 and current_date.month == 4:
-                    # Annual revaluation of existing pot and salary indexation by inflation rate
+                # Revaluation continues every April 1st until pension payout starts at Target Retirement Age
+                revaluation_active = current_date < ret_date_limit
+
+                if current_date > start_date and current_date.day == 1 and current_date.month == 4 and revaluation_active:
+                    # Annual inflation revaluation of existing accumulated pot
                     nuvos_accumulated *= (1.0 + self.scenario.inflation_rate)
-                    current_nuvos_salary *= (1.0 + self.scenario.inflation_rate)
                     
-                    # Add new active pension earned for the year (e.g., 2.3% of salary)
-                    new_accrual = current_nuvos_salary * (self.scenario.nuvos_accrual_rate / 100.0)
-                    nuvos_accumulated += new_accrual
+                    if active_accrual_active:
+                        # Salary indexation and new 2.3% active accrual
+                        current_nuvos_salary *= (1.0 + self.scenario.inflation_rate)
+                        new_accrual = current_nuvos_salary * (self.scenario.nuvos_accrual_rate / 100.0)
+                        nuvos_accumulated += new_accrual
 
             # Standard Annuity Calculation
             current_annual_annuity = 0.0
@@ -581,15 +593,10 @@ class RetirementEngine:
                     )
 
             # Total annual guaranteed pension from annuity + Nuvos (accessible at Target Retirement Age)
-            try:
-                nuvos_start_date = date(self.dob.year + self.retirement_age, self.dob.month, self.dob.day)
-            except ValueError:
-                nuvos_start_date = date(self.dob.year + self.retirement_age, 2, 28)
-
             current_annual_nuvos = 0.0
-            if self.scenario.has_nuvos_pension and current_date >= nuvos_start_date:
-                years_since_nuvos_start = current_date.year - nuvos_start_date.year - (
-                    (current_date.month, current_date.day) < (nuvos_start_date.month, nuvos_start_date.day)
+            if self.scenario.has_nuvos_pension and current_date >= ret_date_limit:
+                years_since_nuvos_start = current_date.year - ret_date_limit.year - (
+                    (current_date.month, current_date.day) < (ret_date_limit.month, ret_date_limit.day)
                 )
                 current_annual_nuvos = nuvos_accumulated * ((1.0 + self.scenario.inflation_rate) ** max(0, years_since_nuvos_start))
 
@@ -1236,6 +1243,8 @@ with st.sidebar.form(key=f"scenario_form_{selected_profile}"):
         nuvos_salary = st.number_input("Current Annual Pensionable Salary (£)", min_value=0.0, value=float(curr_data.get("nuvos_salary", 35000.0)), step=1000.0, help="Used to calculate active annual earnings accrual.")
         nuvos_accrual_rate = st.number_input("Annual CARE Accrual Rate (%)", min_value=0.0, max_value=10.0, value=float(curr_data.get("nuvos_accrual_rate", 2.3)), step=0.1, help="Standard Nuvos accrual rate is 2.3% per year.")
         
+        nuvos_pause_enabled = st.checkbox("Enable Pause / Leave Scheme Date", value=curr_data.get("nuvos_pause_enabled", True), help="If checked, active 2.3% accrual stops on the selected date below, but inflation revaluation continues. If unchecked, active accrual runs continuously up to retirement age.")
+
         try:
             max_nuvos_pause = date(dob.year + ret_age, dob.month, dob.day)
         except ValueError:
@@ -1247,7 +1256,7 @@ with st.sidebar.form(key=f"scenario_form_{selected_profile}"):
             min_value=date(2020, 1, 1),
             max_value=max_nuvos_pause,
             format="DD/MM/YYYY",
-            help="Date Karen leaves the scheme or active contributions/revaluation pauses (capped at Target Retirement Age)."
+            help="Date Karen leaves active scheme membership (active 2.3% accrual stops, capped at Target Retirement Age)."
         )
 
     with st.expander("🏛 State Pension", expanded=False):
@@ -1346,6 +1355,7 @@ with st.sidebar.form(key=f"scenario_form_{selected_profile}"):
             "inflate_annuity_to_start": inflate_annuity_to_start,
             "has_nuvos_pension": has_nuvos_pension,
             "nuvos_annual": nuvos_annual,
+            "nuvos_pause_enabled": nuvos_pause_enabled,
             "nuvos_pause_date": min(nuvos_pause_date, max_nuvos_pause),
             "nuvos_salary": nuvos_salary,
             "nuvos_accrual_rate": nuvos_accrual_rate,
@@ -1475,6 +1485,7 @@ scenario_obj = Scenario(
     inflate_annuity_to_start=active_p.get("inflate_annuity_to_start", False),
     has_nuvos_pension=active_p.get("has_nuvos_pension", False),
     nuvos_annual=active_p.get("nuvos_annual", 15929.31),
+    nuvos_pause_enabled=active_p.get("nuvos_pause_enabled", True),
     nuvos_pause_date=active_p.get("nuvos_pause_date", get_next_tax_year_start()),
     nuvos_salary=active_p.get("nuvos_salary", 35000.0),
     nuvos_accrual_rate=active_p.get("nuvos_accrual_rate", 2.3),
@@ -1842,7 +1853,7 @@ with col_notes1:
         This engine applies strict, tax-efficient drawdown rules in a defined sequence on the 1st of every month:
 
         1. **Guaranteed Income First (Annuity, Nuvos & State Pension):**
-           * **Annuities / DB / Nuvos Pensions:** Annual pension payments are applied first and increase with inflation (or remain flat if level) after Year 1. Nuvos actively accumulates 2.3% of salary each year and revalues with inflation until your chosen pause date, paying out at your Target Retirement Age.
+           * **Annuities / DB / Nuvos Pensions:** Annual pension payments are applied first and increase with inflation (or remain flat if level) after Year 1. Nuvos actively accrues 2.3% of salary up to your pause date, while statutory inflation revaluation continues on accumulated pots until your Target Retirement Age.
            * **State Pension:** Applied automatically once you reach your configured State Pension age, escalating annually by your growth input.
            * **Excess Income Recycling:** If guaranteed income exceeds your target inflation-adjusted monthly income, the surplus is automatically deposited into your **S&S ISA** (up to the **£20,000/year** limit), with any remaining excess directed to **Other Investments**.
 
@@ -1870,15 +1881,10 @@ with col_notes1:
         1. **Baseline Initialization:**
            * Starts with your recorded accrued baseline figure (e.g., **£15,929.31/year** from the March 2025 statement).
 
-        2. **Active Annual Accrual & Indexation (Up to Pause Date):**
-           * Each year on April 1st (up to your configured **Nuvos Pause / Leave Scheme Date**, capped at your Target Retirement Age), the existing accumulated pension pot and current pensionable salary are indexed upward in line with the app's **Annual Inflation Rate (%)** (mirroring statutory CARE revaluation).
-           * Simultaneously, a new annual accrual chunk equal to **2.3%** (or your custom accrual rate) of that year's active pensionable salary is added directly onto the running total.
-
-        3. **Pause / Leave Scheme Rule:**
-           * If the **Nuvos Pause / Leave Scheme Date** is reached or set prior to your Target Retirement Age, active contributions and revaluation cease immediately. The accumulated pension total locks in at that exact amount and remains deferred.
-
-        4. **Deferred Revaluation & Payout:**
-           * Once locked/deferred, the pot continues to revalue with inflation until Karen reaches her **Target Retirement Age**, at which point guaranteed annual income payments commence and factor into the retirement income waterfall.
+        2. **Active Accrual vs. Inflation Revaluation:**
+           * **Inflation Revaluation:** Every April 1st, the entire accumulated pension pot increases by the **Annual Inflation Rate (%)**, ensuring deferred or active pots maintain real-terms purchasing power up until your Target Retirement Age.
+           * **Active 2.3% Accrual:** In addition to inflation revaluation, new pension is earned each year (2.3% of pensionable salary) *until* your configured **Pause / Leave Scheme Date** (if enabled). 
+           * Once the pause date is reached, active career-average accrual ceases, but statutory inflation revaluation continues compounding on the pot until payments commence at your Target Retirement Age.
         """)
 
 with col_notes2:
