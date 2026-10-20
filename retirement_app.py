@@ -136,7 +136,7 @@ DEFAULT_PROFILES = {
         "gilt_5_coupon_pct": 0.0,
         "crash_pct": 0.0,
         "crash_date": get_next_tax_year_start(),
-        "view_mode": "Age Year",
+        "view_mode": "Age Year (Annual)",
         "notes": "",
         "budget_items": [
             {"id": str(uuid.uuid4()), "item": "Housing / Council Tax", "amount": 800.0, "month_paid": "Monthly", "annual_amount": 9600.0},
@@ -223,7 +223,7 @@ DEFAULT_PROFILES = {
         "gilt_5_coupon_pct": 0.0,
         "crash_pct": 0.0,
         "crash_date": get_next_tax_year_start(),
-        "view_mode": "Age Year",
+        "view_mode": "Age Year (Annual)",
         "notes": "",
         "budget_items": [
             {"id": str(uuid.uuid4()), "item": "Housing / Council Tax", "amount": 700.0, "month_paid": "Monthly", "annual_amount": 8400.0},
@@ -899,7 +899,7 @@ class RetirementEngine:
             total_portfolio = (sipp + wp_taxable + wp_tax_free + isa + other) - cumulative_deficit
             total_monthly_income = monthly_drawn_from_pots + state_pension_monthly + combined_pension_monthly
             
-            # Pure Yield / Investment Return metric (Gilt Coupons + Capital Growth)
+            # Pure Yield / Investment Return metric (Gilt Coupon Yield)
             total_daily_investment_income = daily_gilt_income
 
             daily_records.append({
@@ -1311,8 +1311,8 @@ with st.sidebar.form(key=f"scenario_form_{selected_profile}"):
     with st.expander("👁️ Display View", expanded=False):
         view_mode = st.radio(
             "Display View Mode",
-            ["Age Year", "Monthly (Default)"],
-            index=0 if curr_data.get("view_mode", "Age Year") == "Age Year" else 1,
+            ["Age Year (Annual)", "Monthly"],
+            index=0 if curr_data.get("view_mode", "Age Year (Annual)") in ["Age Year (Annual)", "Age Year", "Tax Year"] else 1,
         )
 
     submit_bottom = st.form_submit_button(
@@ -1528,8 +1528,9 @@ engine = RetirementEngine(
 
 m_df, age_year_df = engine.run_simulation()
 
-active_df = age_year_df if active_p.get("view_mode", "Age Year") == "Age Year" else m_df
-x_col = "age_year_label" if active_p.get("view_mode", "Age Year") == "Age Year" else "year_month"
+is_annual_view = active_p.get("view_mode", "Age Year (Annual)") in ["Age Year (Annual)", "Age Year", "Tax Year"]
+active_df = age_year_df if is_annual_view else m_df
+x_col = "age_year_label" if is_annual_view else "year_month"
 annual_inc = int(round(active_p["monthly_inc"] * 12.0))
 
 today = date.today()
@@ -1617,14 +1618,14 @@ selected_year_label = st.selectbox("Select an Age/Period to Inspect Narrative:",
 selected_row = active_df[active_df[x_col] == selected_year_label].iloc[0]
 
 age_val = int(selected_row["age"])
-desired_inc = int(selected_row["desired_annual_income"] if active_p.get("view_mode", "Age Year") == "Age Year" else selected_row["desired_monthly_income"] * 12)
-state_pen = int(selected_row["state_pension_income"] * (12 if active_p.get("view_mode", "Age Year") != "Age Year" else 1))
+desired_inc = int(selected_row["desired_annual_income"] if is_annual_view else selected_row["desired_monthly_income"] * 12)
+state_pen = int(selected_row["state_pension_income"] * (1 if is_annual_view else 12))
 annuity_inc = int(selected_row["annuity_income"])
-pot_drawn = int(selected_row["pot_income_drawn"] * (12 if active_p.get("view_mode", "Age Year") != "Age Year" else 1))
-tax_paid = int(selected_row["tax_paid"] * (12 if active_p.get("view_mode", "Age Year") != "Age Year" else 1))
+pot_drawn = int(selected_row["pot_income_drawn"] * (1 if is_annual_view else 12))
+tax_paid = int(selected_row["tax_paid"] * (1 if is_annual_view else 12))
 is_ret = selected_row["is_retired"]
 
-mult_factor = 1 if active_p.get("view_mode", "Age Year") == "Age Year" else 12
+mult_factor = 1 if is_annual_view else 12
 draw_sipp_val = int(round(selected_row["draw_sipp"] * mult_factor))
 draw_wp_taxable_val = int(round(selected_row["draw_wp_taxable"] * mult_factor))
 draw_wp_taxfree_val = int(round(selected_row["draw_wp_taxfree"] * mult_factor))
