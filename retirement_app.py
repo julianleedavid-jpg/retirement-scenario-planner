@@ -1582,7 +1582,7 @@ st.markdown("---")
 st.subheader("📊 Portfolio Trajectory & Drawdown Forecast")
 st.line_chart(
     active_df,
-    x=x_col,
+    x="age" if is_annual_view else "year_month",
     y=["sipp", "private_pension", "isa", "other_investment", "investment_income", "total_portfolio", "desired_annual_income"],
 )
 
