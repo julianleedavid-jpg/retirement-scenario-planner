@@ -136,7 +136,7 @@ DEFAULT_PROFILES = {
         "gilt_5_coupon_pct": 0.0,
         "crash_pct": 0.0,
         "crash_date": get_next_tax_year_start(),
-        "view_mode": "Tax Year",
+        "view_mode": "Age Year",
         "notes": "",
         "budget_items": [
             {"id": str(uuid.uuid4()), "item": "Housing / Council Tax", "amount": 800.0, "month_paid": "Monthly", "annual_amount": 9600.0},
@@ -223,7 +223,7 @@ DEFAULT_PROFILES = {
         "gilt_5_coupon_pct": 0.0,
         "crash_pct": 0.0,
         "crash_date": get_next_tax_year_start(),
-        "view_mode": "Tax Year",
+        "view_mode": "Age Year",
         "notes": "",
         "budget_items": [
             {"id": str(uuid.uuid4()), "item": "Housing / Council Tax", "amount": 700.0, "month_paid": "Monthly", "annual_amount": 8400.0},
@@ -898,7 +898,9 @@ class RetirementEngine:
             private_pension_val = wp_taxable + wp_tax_free
             total_portfolio = (sipp + wp_taxable + wp_tax_free + isa + other) - cumulative_deficit
             total_monthly_income = monthly_drawn_from_pots + state_pension_monthly + combined_pension_monthly
-            total_daily_investment_income = daily_gilt_income + monthly_drawn_from_pots
+            
+            # Pure Yield / Investment Return metric (Gilt Coupons + Capital Growth)
+            total_daily_investment_income = daily_gilt_income
 
             daily_records.append({
                 "date": current_date,
@@ -947,10 +949,11 @@ class RetirementEngine:
         )
         monthly_df["year_month"] = monthly_df.apply(lambda r: f"{r['raw_month']} ({r['age']})", axis=1)
 
-        tax_year_df = (
-            df.groupby("tax_year")
+        # Birthday-to-Birthday (Age Year) Grouping Engine
+        age_year_df = (
+            df.groupby("age")
             .agg({
-                "date": "last", "age": "last", "is_retired": "last",
+                "date": "last", "is_retired": "last",
                 "desired_monthly_income": "last", "desired_annual_income": "last",
                 "sipp": "last", "private_pension": "last", "isa": "last",
                 "other_investment": "last", "investment_income": "sum",
@@ -962,8 +965,8 @@ class RetirementEngine:
             })
             .reset_index()
         )
-        tax_year_df["tax_year_with_age"] = tax_year_df.apply(lambda r: f"{r['tax_year']} ({r['age']})", axis=1)
-        tax_year_df["monthly_net_income"] = (tax_year_df["monthly_net_income"] / 12.0).round(0)
+        age_year_df["age_year_label"] = age_year_df["age"].apply(lambda a: f"Age {a}")
+        age_year_df["monthly_net_income"] = (age_year_df["monthly_net_income"] / 12.0).round(0)
 
         num_cols = [
             "desired_monthly_income", "desired_annual_income", "sipp",
@@ -973,9 +976,9 @@ class RetirementEngine:
             "draw_isa", "draw_other", "monthly_net_income", "tax_paid",
         ]
         monthly_df[num_cols] = monthly_df[num_cols].round(0).astype(int)
-        tax_year_df[num_cols] = tax_year_df[num_cols].round(0).astype(int)
+        age_year_df[num_cols] = age_year_df[num_cols].round(0).astype(int)
 
-        return monthly_df, tax_year_df
+        return monthly_df, age_year_df
 
 
 def find_minimum_retirement_age(dob: date, monthly_income: float, base_scenario: Scenario) -> int:
@@ -1308,8 +1311,8 @@ with st.sidebar.form(key=f"scenario_form_{selected_profile}"):
     with st.expander("👁️ Display View", expanded=False):
         view_mode = st.radio(
             "Display View Mode",
-            ["Tax Year", "Monthly (Default)"],
-            index=0 if curr_data["view_mode"] == "Tax Year" else 1,
+            ["Age Year", "Monthly (Default)"],
+            index=0 if curr_data.get("view_mode", "Age Year") == "Age Year" else 1,
         )
 
     submit_bottom = st.form_submit_button(
@@ -1523,10 +1526,10 @@ engine = RetirementEngine(
     scenario=scenario_obj,
 )
 
-m_df, ty_df = engine.run_simulation()
+m_df, age_year_df = engine.run_simulation()
 
-active_df = ty_df if active_p["view_mode"] == "Tax Year" else m_df
-x_col = "tax_year_with_age" if active_p["view_mode"] == "Tax Year" else "year_month"
+active_df = age_year_df if active_p.get("view_mode", "Age Year") == "Age Year" else m_df
+x_col = "age_year_label" if active_p.get("view_mode", "Age Year") == "Age Year" else "year_month"
 annual_inc = int(round(active_p["monthly_inc"] * 12.0))
 
 today = date.today()
@@ -1609,19 +1612,19 @@ st.markdown("---")
 st.subheader("📖 Annual Income & Drawdown Narrative Explorer")
 
 year_options = active_df[x_col].tolist()
-selected_year_label = st.selectbox("Select a Year/Period to Inspect Narrative:", options=year_options)
+selected_year_label = st.selectbox("Select an Age/Period to Inspect Narrative:", options=year_options)
 
 selected_row = active_df[active_df[x_col] == selected_year_label].iloc[0]
 
 age_val = int(selected_row["age"])
-desired_inc = int(selected_row["desired_annual_income"] if active_p["view_mode"] == "Tax Year" else selected_row["desired_monthly_income"] * 12)
-state_pen = int(selected_row["state_pension_income"] * (12 if active_p["view_mode"] != "Tax Year" else 1))
+desired_inc = int(selected_row["desired_annual_income"] if active_p.get("view_mode", "Age Year") == "Age Year" else selected_row["desired_monthly_income"] * 12)
+state_pen = int(selected_row["state_pension_income"] * (12 if active_p.get("view_mode", "Age Year") != "Age Year" else 1))
 annuity_inc = int(selected_row["annuity_income"])
-pot_drawn = int(selected_row["pot_income_drawn"] * (12 if active_p["view_mode"] != "Tax Year" else 1))
-tax_paid = int(selected_row["tax_paid"] * (12 if active_p["view_mode"] != "Tax Year" else 1))
+pot_drawn = int(selected_row["pot_income_drawn"] * (12 if active_p.get("view_mode", "Age Year") != "Age Year" else 1))
+tax_paid = int(selected_row["tax_paid"] * (12 if active_p.get("view_mode", "Age Year") != "Age Year" else 1))
 is_ret = selected_row["is_retired"]
 
-mult_factor = 1 if active_p["view_mode"] == "Tax Year" else 12
+mult_factor = 1 if active_p.get("view_mode", "Age Year") == "Age Year" else 12
 draw_sipp_val = int(round(selected_row["draw_sipp"] * mult_factor))
 draw_wp_taxable_val = int(round(selected_row["draw_wp_taxable"] * mult_factor))
 draw_wp_taxfree_val = int(round(selected_row["draw_wp_taxfree"] * mult_factor))
@@ -1638,7 +1641,7 @@ if not is_ret:
 else:
     guaranteed_total = state_pen + annuity_inc
     st.success(f"""
-    **Retirement Narrative for {selected_year_label} (Age {age_val}):**
+    **Retirement Narrative for {selected_year_label}:**
     * **Target Income Goal:** You required **£{desired_inc:,}** net for the year.
     * **Guaranteed Income:** **£{guaranteed_total:,}** was covered automatically (£{annuity_inc:,} from your Combined DB/Nuvos & Annuity pensions and £{state_pen:,} from your State Pension).
     * **Investment Pot Drawdowns:** To cover the remaining shortfall, a total of **£{pot_drawn:,}** was systematically drawn across your pots:
