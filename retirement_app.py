@@ -87,14 +87,19 @@ DEFAULT_PROFILES = {
         "annuity_annual": 0.0,
         "annuity_cost": 0.0,
         "annuity_start_age": 62,
+        "annuity_npa": 65,
         "annuity_type": "Inflation-Linked (RPI/CPI)",
         "inflate_annuity_to_start": False,
+        "apply_db_early_reduction": True,
         "has_nuvos_pension": False,
         "nuvos_annual": 15929.31,
+        "nuvos_baseline_date": date(2025, 3, 31),
+        "nuvos_npa": 65,
         "nuvos_pause_enabled": True,
         "nuvos_pause_date": get_next_tax_year_start(),
-        "nuvos_salary": 35000.0,
+        "nuvos_salary": 57015.0,
         "nuvos_accrual_rate": 2.3,
+        "apply_nuvos_early_reduction": True,
         "lump_sum_1_amt": 0.0,
         "lump_sum_1_date": get_next_tax_year_start(),
         "lump_sum_1_pot": "S&S ISA",
@@ -148,7 +153,7 @@ DEFAULT_PROFILES = {
     },
     "Karen": {
         "dob": date(1980, 10, 16),
-        "ret_age": 65,
+        "ret_age": 57,
         "monthly_inc": 2500.0,
         "increased_monthly_inc": 0.0,
         "increase_date": get_next_tax_year_start(),
@@ -171,19 +176,24 @@ DEFAULT_PROFILES = {
         "state_pension_age": 67,
         "state_pension_amount": 12548.0,
         "state_pension_growth": 2.5,
-        "annuity_annual": 0.0,
+        "annuity_annual": 2989.38,
         "annuity_cost": 0.0,
-        "annuity_start_age": 65,
+        "annuity_start_age": 57,
+        "annuity_npa": 65,
         "annuity_type": "Inflation-Linked (RPI/CPI)",
-        "inflate_annuity_to_start": False,
+        "inflate_annuity_to_start": True,
+        "apply_db_early_reduction": True,
         "has_nuvos_pension": True,
         "nuvos_annual": 15929.31,
+        "nuvos_baseline_date": date(2025, 3, 31),
+        "nuvos_npa": 65,
         "nuvos_pause_enabled": True,
-        "nuvos_pause_date": date(2031, 4, 6),
-        "nuvos_salary": 35000.0,
+        "nuvos_pause_date": date(2037, 10, 16),
+        "nuvos_salary": 57015.0,
         "nuvos_accrual_rate": 2.3,
-        "lump_sum_1_amt": 0.0,
-        "lump_sum_1_date": get_next_tax_year_start(),
+        "apply_nuvos_early_reduction": True,
+        "lump_sum_1_amt": 6214.78,
+        "lump_sum_1_date": date(2037, 10, 16),
         "lump_sum_1_pot": "S&S ISA",
         "lump_sum_2_amt": 0.0,
         "lump_sum_2_date": get_next_tax_year_start(),
@@ -261,26 +271,6 @@ def deserialize_scenario(scen_dict: dict) -> dict:
                 deserialized[k] = v
         else:
             deserialized[k] = v
-    if "gilt_1_coupon" in deserialized and "gilt_1_coupon_pct" not in deserialized:
-        amt = deserialized.get("gilt_1_amt", 0.0)
-        c_val = deserialized.pop("gilt_1_coupon")
-        deserialized["gilt_1_coupon_pct"] = (c_val / amt * 100.0) if amt > 0 else 0.0
-    if "gilt_2_coupon" in deserialized and "gilt_2_coupon_pct" not in deserialized:
-        amt = deserialized.get("gilt_2_amt", 0.0)
-        c_val = deserialized.pop("gilt_2_coupon")
-        deserialized["gilt_2_coupon_pct"] = (c_val / amt * 100.0) if amt > 0 else 0.0
-    if "gilt_3_coupon" in deserialized and "gilt_3_coupon_pct" not in deserialized:
-        amt = deserialized.get("gilt_3_amt", 0.0)
-        c_val = deserialized.pop("gilt_3_coupon")
-        deserialized["gilt_3_coupon_pct"] = (c_val / amt * 100.0) if amt > 0 else 0.0
-    if "gilt_4_coupon" in deserialized and "gilt_4_coupon_pct" not in deserialized:
-        amt = deserialized.get("gilt_4_amt", 0.0)
-        c_val = deserialized.pop("gilt_4_coupon")
-        deserialized["gilt_4_coupon_pct"] = (c_val / amt * 100.0) if amt > 0 else 0.0
-    if "gilt_5_coupon" in deserialized and "gilt_5_coupon_pct" not in deserialized:
-        amt = deserialized.get("gilt_5_amt", 0.0)
-        c_val = deserialized.pop("gilt_5_coupon")
-        deserialized["gilt_5_coupon_pct"] = (c_val / amt * 100.0) if amt > 0 else 0.0
 
     if "budget_items" not in deserialized:
         deserialized["budget_items"] = []
@@ -341,8 +331,42 @@ if "active_scenario_name" not in st.session_state or st.session_state.active_sce
 
 
 # ----------------------------------------------------------------------
-# 2. Data Models
+# 2. Data Models & Reduction Calculation Helper
 # ----------------------------------------------------------------------
+
+def calculate_early_retirement_reduction_factor(start_age: float, npa: float = 65.0) -> float:
+    """
+    Calculates standard UK Public Sector / DB Actuarial Early Retirement Reduction Factor.
+    Standard GAD reduction table mapping years early (NPA - start_age) to pension payout factor.
+    """
+    years_early = max(0.0, npa - start_age)
+    if years_early == 0:
+        return 1.0
+    
+    # Standard GAD DB Early Retirement Pension Reduction Factors
+    gad_reductions = {
+        0: 0.00,
+        1: 0.050,
+        2: 0.096,
+        3: 0.139,
+        4: 0.179,
+        5: 0.215,
+        6: 0.249,
+        7: 0.281,
+        8: 0.311,
+        9: 0.339,
+        10: 0.366,
+    }
+    
+    int_years = int(years_early)
+    frac = years_early - int_years
+    
+    base_red = gad_reductions.get(min(int_years, 10), 0.366 + (min(int_years, 10) - 10) * 0.025)
+    next_red = gad_reductions.get(min(int_years + 1, 10), base_red + 0.025)
+    
+    actual_reduction_pct = base_red + (next_red - base_red) * frac
+    return max(0.0, 1.0 - actual_reduction_pct)
+
 
 @dataclass
 class PotConfig:
@@ -387,14 +411,19 @@ class Scenario:
     annuity_annual: float = 0.0
     annuity_cost: float = 0.0
     annuity_start_age: int = 65
+    annuity_npa: int = 65
     annuity_type: str = "Inflation-Linked (RPI/CPI)"
     inflate_annuity_to_start: bool = False
+    apply_db_early_reduction: bool = True
     has_nuvos_pension: bool = False
     nuvos_annual: float = 15929.31
+    nuvos_baseline_date: date = field(default_factory=lambda: date(2025, 3, 31))
+    nuvos_npa: int = 65
     nuvos_pause_enabled: bool = True
     nuvos_pause_date: date = field(default_factory=get_next_tax_year_start)
-    nuvos_salary: float = 35000.0
+    nuvos_salary: float = 57015.0
     nuvos_accrual_rate: float = 2.3
+    apply_nuvos_early_reduction: bool = True
     increased_monthly_inc: float = 0.0
     increase_date: date = field(default_factory=get_next_tax_year_start)
     reduced_monthly_inc: float = 2500.0
@@ -508,6 +537,7 @@ class RetirementEngine:
         except ValueError:
             target_100_date = date(self.dob.year + 100, 2, 28)
 
+        # Dynamic Annuity/DB pension start date
         try:
             annuity_start_date = date(self.dob.year + self.scenario.annuity_start_age, self.dob.month, self.dob.day)
         except ValueError:
@@ -533,20 +563,43 @@ class RetirementEngine:
 
         gilt_events_map = self._build_gilt_events()
 
+        # Calculate standard DB/Annuity Base Payout with optional Actuarial Reduction
         base_annuity = self.scenario.annuity_annual
+        if self.scenario.apply_db_early_reduction and self.scenario.annuity_start_age < self.scenario.annuity_npa:
+            db_red_factor = calculate_early_retirement_reduction_factor(self.scenario.annuity_start_age, self.scenario.annuity_npa)
+            base_annuity *= db_red_factor
+
         if self.scenario.inflate_annuity_to_start and annuity_start_date > start_date:
             years_to_start = (annuity_start_date - start_date).days / 365.25
             base_annuity *= ((1.0 + self.scenario.inflation_rate) ** max(0.0, years_to_start))
 
-        # Dynamic Nuvos Pension State Tracker with Active Accrual & Revaluation
+        # Dynamic Nuvos Accrual & Inflation Engine starting strictly from baseline date
         nuvos_baseline = self.scenario.nuvos_annual if self.scenario.has_nuvos_pension else 0.0
         nuvos_accumulated = nuvos_baseline
         current_nuvos_salary = self.scenario.nuvos_salary
 
+        # Track Nuvos growth timeline from statement baseline date up to Target Retirement Age
+        nuvos_sim_date = self.scenario.nuvos_baseline_date
         try:
             ret_date_limit = date(self.dob.year + self.retirement_age, self.dob.month, self.dob.day)
         except ValueError:
             ret_date_limit = date(self.dob.year + self.retirement_age, 2, 28)
+
+        # Pre-simulate Nuvos growth from March 2025 baseline to today (start_date)
+        if self.scenario.has_nuvos_pension and nuvos_sim_date < start_date:
+            curr_sim = nuvos_sim_date + timedelta(days=1)
+            while curr_sim <= start_date:
+                if curr_sim.day == 1 and curr_sim.month == 4:
+                    nuvos_accumulated *= (1.0 + self.scenario.inflation_rate)
+                    if not self.scenario.nuvos_pause_enabled or curr_sim <= self.scenario.nuvos_pause_date:
+                        current_nuvos_salary *= (1.0 + self.scenario.inflation_rate)
+                        new_accrual = current_nuvos_salary * (self.scenario.nuvos_accrual_rate / 100.0)
+                        nuvos_accumulated += new_accrual
+                curr_sim += timedelta(days=1)
+
+        # Calculate finalized Nuvos payout at Target Retirement Age including Early Reduction Factor
+        nuvos_payout_at_retire = 0.0
+        nuvos_calculated_at_retire = False
 
         while current_date <= target_100_date:
             age = self._calculate_age(self.dob, current_date)
@@ -558,22 +611,25 @@ class RetirementEngine:
                 isa_credited_this_tax_year = 0.0
                 last_tax_year = current_tax_year
 
-            # Nuvos Active Accrual vs Inflation Revaluation Check
-            if self.scenario.has_nuvos_pension:
-                if self.scenario.nuvos_pause_enabled:
-                    active_accrual_active = current_date <= min(self.scenario.nuvos_pause_date, ret_date_limit)
-                else:
-                    active_accrual_active = current_date <= ret_date_limit
-
-                revaluation_active = current_date < ret_date_limit
-
-                if current_date > start_date and current_date.day == 1 and current_date.month == 4 and revaluation_active:
+            # Ongoing Nuvos Active Accrual vs Inflation Revaluation Check (from start_date forward)
+            if self.scenario.has_nuvos_pension and current_date < ret_date_limit:
+                if current_date > start_date and current_date.day == 1 and current_date.month == 4:
                     nuvos_accumulated *= (1.0 + self.scenario.inflation_rate)
-                    
+                    active_accrual_active = not self.scenario.nuvos_pause_enabled or (current_date <= self.scenario.nuvos_pause_date)
                     if active_accrual_active:
                         current_nuvos_salary *= (1.0 + self.scenario.inflation_rate)
                         new_accrual = current_nuvos_salary * (self.scenario.nuvos_accrual_rate / 100.0)
                         nuvos_accumulated += new_accrual
+
+            # Apply early retirement actuarial reduction factor to Nuvos pension at retirement age
+            if self.scenario.has_nuvos_pension and current_date >= ret_date_limit and not nuvos_calculated_at_retire:
+                unreduced_nuvos = nuvos_accumulated
+                if self.scenario.apply_nuvos_early_reduction and self.retirement_age < self.scenario.nuvos_npa:
+                    reduction_factor = calculate_early_retirement_reduction_factor(self.retirement_age, self.scenario.nuvos_npa)
+                    nuvos_payout_at_retire = unreduced_nuvos * reduction_factor
+                else:
+                    nuvos_payout_at_retire = unreduced_nuvos
+                nuvos_calculated_at_retire = True
 
             # Standard Annuity Calculation
             current_annual_annuity = 0.0
@@ -588,16 +644,17 @@ class RetirementEngine:
                         (1.0 + self.scenario.inflation_rate) ** max(0, years_since_annuity)
                     )
 
-            # Total annual guaranteed pension from annuity + Nuvos (accessible at Target Retirement Age)
+            # Nuvos Annual Payout escalating post-retirement with CPI
             current_annual_nuvos = 0.0
             if self.scenario.has_nuvos_pension and current_date >= ret_date_limit:
                 years_since_nuvos_start = current_date.year - ret_date_limit.year - (
                     (current_date.month, current_date.day) < (ret_date_limit.month, ret_date_limit.day)
                 )
-                current_annual_nuvos = nuvos_accumulated * ((1.0 + self.scenario.inflation_rate) ** max(0, years_since_nuvos_start))
+                current_annual_nuvos = nuvos_payout_at_retire * ((1.0 + self.scenario.inflation_rate) ** max(0, years_since_nuvos_start))
 
             total_combined_annual_pension = current_annual_annuity + current_annual_nuvos
 
+            # Lump sum injections processing
             for idx, ls in enumerate(self.scenario.lump_sums):
                 if not lump_sums_applied[idx] and ls.amount != 0 and current_date >= ls.injection_date:
                     if ls.amount > 0:
@@ -899,7 +956,6 @@ class RetirementEngine:
             total_portfolio = (sipp + wp_taxable + wp_tax_free + isa + other) - cumulative_deficit
             total_monthly_income = monthly_drawn_from_pots + state_pension_monthly + combined_pension_monthly
             
-            # Pure Yield / Investment Return metric (Gilt Coupon Yield)
             total_daily_investment_income = daily_gilt_income
 
             daily_records.append({
@@ -949,7 +1005,6 @@ class RetirementEngine:
         )
         monthly_df["year_month"] = monthly_df.apply(lambda r: f"{r['raw_month']} ({r['age']})", axis=1)
 
-        # Birthday-to-Birthday (Age Year) Grouping Engine
         age_year_df = (
             df.groupby("age")
             .agg({
@@ -1155,17 +1210,17 @@ with st.sidebar.form(key=f"scenario_form_{selected_profile}"):
 
         st.markdown("##### Lump Sum 1")
         ls1_amt = st.number_input("Lump Sum 1 Amount (£)", min_value=-1000000.0, value=float(curr_data.get("lump_sum_1_amt", 0.0)), step=1000.0, help="Enter a negative amount to simulate a withdrawal.")
-        ls1_date = st.date_input("Lump Sum 1 Date", value=curr_data.get("lump_sum_1_date", get_next_tax_year_start()), min_value=date.today(), format="DD/MM/YYYY")
+        ls1_date = st.date_input("Lump Sum 1 Date", value=curr_data.get("lump_sum_1_date", get_next_tax_year_start()), min_value=date(1980, 1, 1), format="DD/MM/YYYY")
         ls1_pot = st.selectbox("Lump Sum 1 Target Pot", options=pot_options, index=pot_options.index("Private Pension" if curr_data.get("lump_sum_1_pot") == "Workplace Pension" else curr_data.get("lump_sum_1_pot", "S&S ISA")), key="ls1_pot_sel")
 
         st.markdown("##### Lump Sum 2")
         ls2_amt = st.number_input("Lump Sum 2 Amount (£)", min_value=-1000000.0, value=float(curr_data.get("lump_sum_2_amt", 0.0)), step=1000.0, help="Enter a negative amount to simulate a withdrawal.")
-        ls2_date = st.date_input("Lump Sum 2 Date", value=curr_data.get("lump_sum_2_date", get_next_tax_year_start()), min_value=date.today(), format="DD/MM/YYYY")
+        ls2_date = st.date_input("Lump Sum 2 Date", value=curr_data.get("lump_sum_2_date", get_next_tax_year_start()), min_value=date(1980, 1, 1), format="DD/MM/YYYY")
         ls2_pot = st.selectbox("Lump Sum 2 Target Pot", options=pot_options, index=pot_options.index("Private Pension" if curr_data.get("lump_sum_2_pot") == "Workplace Pension" else curr_data.get("lump_sum_2_pot", "S&S ISA")), key="ls2_pot_sel")
 
         st.markdown("##### Lump Sum 3")
         ls3_amt = st.number_input("Lump Sum 3 Amount (£)", min_value=-1000000.0, value=float(curr_data.get("lump_sum_3_amt", 0.0)), step=1000.0, help="Enter a negative amount to simulate a withdrawal.")
-        ls3_date = st.date_input("Lump Sum 3 Date", value=curr_data.get("lump_sum_3_date", get_next_tax_year_start()), min_value=date.today(), format="DD/MM/YYYY")
+        ls3_date = st.date_input("Lump Sum 3 Date", value=curr_data.get("lump_sum_3_date", get_next_tax_year_start()), min_value=date(1980, 1, 1), format="DD/MM/YYYY")
         ls3_pot = st.selectbox("Lump Sum 3 Target Pot", options=pot_options, index=pot_options.index("Private Pension" if curr_data.get("lump_sum_3_pot") == "Workplace Pension" else curr_data.get("lump_sum_3_pot", "S&S ISA")), key="ls3_pot_sel")
 
     with st.expander("🏛️ Gilts & Bonds (Up to 5)", expanded=False):
@@ -1232,17 +1287,20 @@ with st.sidebar.form(key=f"scenario_form_{selected_profile}"):
             format="DD/MM/YYYY",
         )
 
-    with st.expander("📜 Pension Annuity / Defined Benefit", expanded=False):
-        annuity_annual = st.number_input("Annual Pension / Annuity (£)", min_value=0.0, value=float(curr_data.get("annuity_annual", 0.0)), step=500.0)
+    with st.expander("📜 Pension Annuity / Defined Benefit (e.g. GMPF)", expanded=False):
+        annuity_annual = st.number_input("Annual Pension / Annuity Baseline (£)", min_value=0.0, value=float(curr_data.get("annuity_annual", 0.0)), step=100.0, help="Unreduced baseline annual pension value (e.g. £2,989.38 for GMPF).")
         annuity_cost = st.number_input("Cost of Annuity (£)", min_value=0.0, value=float(curr_data.get("annuity_cost", 0.0)), step=5000.0, help="Leave at £0 for Defined Benefit / Final Salary pensions.")
         annuity_start_age = st.number_input(
             "Annuity / DB Pension Start Age",
             min_value=50,
             max_value=85,
-            value=int(curr_data.get("annuity_start_age", 65)),
+            value=int(curr_data.get("annuity_start_age", ret_age)),
             step=1,
-            help="Set the age at which pension annuity / Defined Benefit income payments begin.",
+            help="Age when payment starts. Defaults to Target Retirement Age.",
         )
+        annuity_npa = st.number_input("Normal Pension Age (NPA)", min_value=55, max_value=75, value=int(curr_data.get("annuity_npa", 65)), step=1, help="Full unreduced pension age (typically 65).")
+        apply_db_early_reduction = st.checkbox("Apply Actuarial Early Retirement Reduction", value=curr_data.get("apply_db_early_reduction", True), help="Automatically applies early retirement reduction factors if taken before NPA.")
+        
         annuity_types_list = ["Inflation-Linked (RPI/CPI)", "Flat Rate (Level)"]
         saved_annuity_type = curr_data.get("annuity_type", "Inflation-Linked (RPI/CPI)")
         annuity_type_idx = annuity_types_list.index(saved_annuity_type) if saved_annuity_type in annuity_types_list else 0
@@ -1254,31 +1312,34 @@ with st.sidebar.form(key=f"scenario_form_{selected_profile}"):
         )
         inflate_annuity_to_start = st.checkbox(
             "Inflate Pension/Annuity to Start Age",
-            value=curr_data.get("inflate_annuity_to_start", False),
-            help="Check this if the entered annual figure is in today's money. It will grow by inflation until the start age before payments begin.",
+            value=curr_data.get("inflate_annuity_to_start", True),
+            help="Compounding CPI inflation on baseline from today up to pension start age.",
         )
 
         st.markdown("---")
         st.markdown("##### Karen's Nuvos Pension (Research Councils)")
-        has_nuvos_pension = st.checkbox("Include Karen's Nuvos Pension", value=curr_data.get("has_nuvos_pension", False))
-        nuvos_annual = st.number_input("Nuvos Baseline Annual Pension (£)", min_value=0.0, value=float(curr_data.get("nuvos_annual", 15929.31)), step=500.0, help="Accrued baseline pension from March 2025 statement.")
-        nuvos_salary = st.number_input("Current Annual Pensionable Salary (£)", min_value=0.0, value=float(curr_data.get("nuvos_salary", 35000.0)), step=1000.0, help="Used to calculate active annual earnings accrual.")
+        has_nuvos_pension = st.checkbox("Include Karen's Nuvos Pension", value=curr_data.get("has_nuvos_pension", True))
+        nuvos_annual = st.number_input("Nuvos Accrued Baseline Pension (£)", min_value=0.0, value=float(curr_data.get("nuvos_annual", 15929.31)), step=500.0, help="Baseline accrued pension as recorded on statement.")
+        nuvos_baseline_date = st.date_input("Statement Baseline Date", value=curr_data.get("nuvos_baseline_date", date(2025, 3, 31)), min_value=date(2010, 1, 1), format="DD/MM/YYYY", help="Exact date of statement baseline (e.g. 31/03/2025).")
+        nuvos_npa = st.number_input("Nuvos Normal Pension Age (NPA)", min_value=55, max_value=75, value=int(curr_data.get("nuvos_npa", 65)), step=1, help="Normal Pension Age (65).")
+        apply_nuvos_early_reduction = st.checkbox("Apply Early Retirement Penalty (Nuvos)", value=curr_data.get("apply_nuvos_early_reduction", True), help="Automatically reduces payout if retiring before age 65 (e.g., -31.1% at 57).")
+        nuvos_salary = st.number_input("Current Annual Pensionable Salary (£)", min_value=0.0, value=float(curr_data.get("nuvos_salary", 57015.0)), step=1000.0, help="Current pensionable salary for CARE accrual.")
         nuvos_accrual_rate = st.number_input("Annual CARE Accrual Rate (%)", min_value=0.0, max_value=10.0, value=float(curr_data.get("nuvos_accrual_rate", 2.3)), step=0.1, help="Standard Nuvos accrual rate is 2.3% per year.")
         
-        nuvos_pause_enabled = st.checkbox("Enable Pause / Leave Scheme Date", value=curr_data.get("nuvos_pause_enabled", True), help="If checked, active 2.3% accrual stops on the selected date below, but inflation revaluation continues. If unchecked, active accrual runs continuously up to retirement age.")
+        nuvos_pause_enabled = st.checkbox("Enable Pause / Leave Scheme Date", value=curr_data.get("nuvos_pause_enabled", True), help="If checked, active 2.3% accrual stops on selected date (or retirement date).")
 
         try:
-            max_nuvos_pause = date(dob.year + ret_age, dob.month, dob.day)
+            max_nuvos_pause = date(dob.year + 85, dob.month, dob.day)
         except ValueError:
-            max_nuvos_pause = date(dob.year + ret_age, 2, 28)
+            max_nuvos_pause = date(dob.year + 85, 2, 28)
 
         nuvos_pause_date = st.date_input(
             "Nuvos Pause / Leave Scheme Date",
-            value=min(curr_data.get("nuvos_pause_date", get_next_tax_year_start()), max_nuvos_pause),
+            value=curr_data.get("nuvos_pause_date", date(dob.year + ret_age, dob.month, dob.day)),
             min_value=date(2020, 1, 1),
             max_value=max_nuvos_pause,
             format="DD/MM/YYYY",
-            help="Date Karen leaves active scheme membership (active 2.3% accrual stops, capped at Target Retirement Age)."
+            help="Date Karen leaves active scheme membership."
         )
 
     with st.expander("🏛 State Pension", expanded=False):
@@ -1373,14 +1434,19 @@ with st.sidebar.form(key=f"scenario_form_{selected_profile}"):
             "annuity_annual": annuity_annual,
             "annuity_cost": annuity_cost,
             "annuity_start_age": annuity_start_age,
+            "annuity_npa": annuity_npa,
             "annuity_type": annuity_type,
             "inflate_annuity_to_start": inflate_annuity_to_start,
+            "apply_db_early_reduction": apply_db_early_reduction,
             "has_nuvos_pension": has_nuvos_pension,
             "nuvos_annual": nuvos_annual,
+            "nuvos_baseline_date": nuvos_baseline_date,
+            "nuvos_npa": nuvos_npa,
             "nuvos_pause_enabled": nuvos_pause_enabled,
-            "nuvos_pause_date": min(nuvos_pause_date, max_nuvos_pause),
+            "nuvos_pause_date": nuvos_pause_date,
             "nuvos_salary": nuvos_salary,
             "nuvos_accrual_rate": nuvos_accrual_rate,
+            "apply_nuvos_early_reduction": apply_nuvos_early_reduction,
             "sipp_bal": sipp_bal,
             "sipp_ret": sipp_ret,
             "sipp_contrib": sipp_contrib,
@@ -1502,15 +1568,20 @@ scenario_obj = Scenario(
     inflation_rate=active_p.get("inflation_rate", 3.0) / 100.0,
     annuity_annual=active_p.get("annuity_annual", 0.0),
     annuity_cost=active_p.get("annuity_cost", 0.0),
-    annuity_start_age=int(active_p.get("annuity_start_age", 65)),
+    annuity_start_age=int(active_p.get("annuity_start_age", active_p["ret_age"])),
+    annuity_npa=int(active_p.get("annuity_npa", 65)),
     annuity_type=active_p.get("annuity_type", "Inflation-Linked (RPI/CPI)"),
-    inflate_annuity_to_start=active_p.get("inflate_annuity_to_start", False),
+    inflate_annuity_to_start=active_p.get("inflate_annuity_to_start", True),
+    apply_db_early_reduction=active_p.get("apply_db_early_reduction", True),
     has_nuvos_pension=active_p.get("has_nuvos_pension", False),
     nuvos_annual=active_p.get("nuvos_annual", 15929.31),
+    nuvos_baseline_date=active_p.get("nuvos_baseline_date", date(2025, 3, 31)),
+    nuvos_npa=int(active_p.get("nuvos_npa", 65)),
     nuvos_pause_enabled=active_p.get("nuvos_pause_enabled", True),
     nuvos_pause_date=active_p.get("nuvos_pause_date", get_next_tax_year_start()),
-    nuvos_salary=active_p.get("nuvos_salary", 35000.0),
+    nuvos_salary=active_p.get("nuvos_salary", 57015.0),
     nuvos_accrual_rate=active_p.get("nuvos_accrual_rate", 2.3),
+    apply_nuvos_early_reduction=active_p.get("apply_nuvos_early_reduction", True),
     increased_monthly_inc=active_p.get("increased_monthly_inc", 0.0),
     increase_date=active_p.get("increase_date", get_next_tax_year_start()),
     reduced_monthly_inc=active_p.get("reduced_monthly_inc", active_p["monthly_inc"]),
