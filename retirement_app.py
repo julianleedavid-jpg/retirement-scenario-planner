@@ -1027,3 +1027,304 @@ class RetirementEngine:
                 "total_portfolio": "last", "annuity_income": "last",
                 "state_pension_income": "sum", "pot_income_drawn": "sum",
                 "draw_sipp": "sum", "draw_wp_taxable": "sum", "draw_wp_taxfree": "sum",
+                "draw_isa": "sum", "draw_other": "sum",
+                "monthly_net_income": "sum", "tax_paid": "sum",
+            })
+            .reset_index()
+        )
+        monthly_df["year_month"] = monthly_df.apply(lambda r: f"{r['raw_month']} ({r['age']})", axis=1)
+
+        age_year_df = (
+            df.groupby("age")
+            .agg({
+                "date": "last", "is_retired": "last",
+                "desired_monthly_income": "last", "desired_annual_income": "last",
+                "sipp": "last", "private_pension": "last", "isa": "last",
+                "other_investment": "last", "investment_income": "sum",
+                "total_portfolio": "last", "annuity_income": "last",
+                "state_pension_income": "sum", "pot_income_drawn": "sum",
+                "draw_sipp": "sum", "draw_wp_taxable": "sum", "draw_wp_taxfree": "sum",
+                "draw_isa": "sum", "draw_other": "sum",
+                "monthly_net_income": "sum", "tax_paid": "sum",
+            })
+            .reset_index()
+        )
+        age_year_df["age_year_label"] = age_year_df["age"].apply(lambda a: f"Age {a}")
+        age_year_df["monthly_net_income"] = (age_year_df["monthly_net_income"] / 12.0).round(0)
+
+        num_cols = [
+            "desired_monthly_income", "desired_annual_income", "sipp",
+            "private_pension", "isa", "other_investment", "investment_income",
+            "total_portfolio", "annuity_income", "state_pension_income",
+            "pot_income_drawn", "draw_sipp", "draw_wp_taxable", "draw_wp_taxfree",
+            "draw_isa", "draw_other", "monthly_net_income", "tax_paid",
+        ]
+        monthly_df[num_cols] = monthly_df[num_cols].round(0).astype(int)
+        age_year_df[num_cols] = age_year_df[num_cols].round(0).astype(int)
+
+        return monthly_df, age_year_df
+
+
+def find_minimum_retirement_age(dob: date, monthly_income: float, base_scenario: Scenario) -> int:
+    current_age = (
+        date.today().year
+        - dob.year
+        - ((date.today().month, date.today().day) < (dob.month, dob.day))
+    )
+    min_test_age = max(50, current_age)
+    
+    for test_age in range(min_test_age, 86):
+        test_engine = RetirementEngine(
+            dob=dob,
+            retirement_age=test_age,
+            monthly_income=monthly_income,
+            scenario=base_scenario
+        )
+        _, t_df = test_engine.run_simulation()
+        ret_df = t_df[t_df["is_retired"]]
+        depleted = ret_df[ret_df["total_portfolio"] <= 0]
+        if depleted.empty:
+            return test_age
+    return None
+
+
+# ----------------------------------------------------------------------
+# 4. Streamlit Sidebar: Profile Management & Inputs Form
+# ----------------------------------------------------------------------
+
+with st.sidebar.expander("🔗 Live Trading 212 Sync", expanded=False):
+    st.caption("Sync live portfolio balance from Trading 212.")
+    try:
+        t212_api_key = st.secrets.get("t212_api_key") or st.secrets["trading212"]["api_key"]
+        is_live = True
+        try:
+            is_live = st.secrets["trading212"].get("is_live", True)
+        except Exception:
+            pass
+        
+        if st.button("Sync T212 Portfolio Balance"):
+            with st.spinner("Fetching data from Trading 212..."):
+                headers = {"Authorization": t212_api_key}
+                base_url = "https://live.trading212.com/api/v0" if is_live else "https://demo.trading212.com/api/v0"
+                
+                cash_resp = requests.get(f"{base_url}/equity/account/cash", headers=headers)
+                pos_resp = requests.get(f"{base_url}/equity/portfolio", headers=headers)
+                
+                if cash_resp.status_code == 200 and pos_resp.status_code == 200:
+                    cash_data = cash_resp.json()
+                    positions_data = pos_resp.json()
+                    
+                    free_cash = cash_data.get("free", 0.0)
+                    invested_val = sum([p.get("ppc", 0) * p.get("quantity", 0) for p in positions_data])
+                    total_t212_val = invested_val + free_cash
+                    
+                    st.session_state['t212_synced_value'] = total_t212_val
+                    st.success(f"Synced! Total: £{total_t212_val:,.2f}")
+                else:
+                    st.error(f"API Error: Cash Status {cash_resp.status_code}, Portfolio Status {pos_resp.status_code}")
+    except Exception as e:
+        st.warning(f"T212 credentials not configured correctly in secrets: {e}")
+
+    if 't212_synced_value' in st.session_state:
+        sync_val = st.session_state['t212_synced_value']
+        st.metric("Live T212 Value", f"£{sync_val:,.2f}")
+        if st.button("Apply to Active Profile (ISA)"):
+            st.session_state.scenarios[selected_profile]["isa_bal"] = float(sync_val)
+            save_scenarios()
+            st.success("Applied synced value to ISA balance and saved!")
+            st.rerun()
+
+st.sidebar.header("📁 Profile & Scenario Manager")
+
+scenario_list = list(st.session_state.scenarios.keys())
+if st.session_state.active_scenario_name not in scenario_list:
+    st.session_state.active_scenario_name = scenario_list[0]
+
+selected_profile = st.sidebar.selectbox(
+    "Select Active Profile:",
+    options=scenario_list,
+    index=scenario_list.index(st.session_state.active_scenario_name),
+)
+
+st.session_state.active_scenario_name = selected_profile
+
+with st.sidebar.expander("➕ Add New Profile / Copy Current"):
+    new_profile_name = st.text_input("New Profile Name:", placeholder="e.g. Early Retirement")
+    if st.button("Create Profile"):
+        if new_profile_name and new_profile_name not in st.session_state.scenarios:
+            st.session_state.scenarios[new_profile_name] = st.session_state.scenarios[selected_profile].copy()
+            st.session_state.active_scenario_name = new_profile_name
+            save_scenarios()
+            st.success(f"Profile '{new_profile_name}' created and saved!")
+            st.rerun()
+        elif new_profile_name in st.session_state.scenarios:
+            st.warning("Profile name already exists.")
+
+if selected_profile not in DEFAULT_PROFILES:
+    if st.sidebar.button(f"🗑️ Delete Profile '{selected_profile}'", use_container_width=True):
+        del st.session_state.scenarios[selected_profile]
+        save_scenarios()
+        st.session_state.active_scenario_name = list(st.session_state.scenarios.keys())[0]
+        st.toast(f"Deleted profile '{selected_profile}'", icon="🗑")
+        st.rerun()
+else:
+    st.sidebar.caption("🔒 Default profile (cannot be deleted)")
+
+curr_data = st.session_state.scenarios[selected_profile]
+
+st.sidebar.markdown("---")
+
+with st.sidebar.form(key=f"scenario_form_{selected_profile}"):
+    st.header(f"⚙️ Edit '{selected_profile}'")
+
+    submit_top = st.form_submit_button(
+        label="🔄 Recalculate Forecast", use_container_width=True, key="recalc_top"
+    )
+
+    with st.expander("👤 Core Profile & Income Goals", expanded=True):
+        dob = st.date_input(
+            "Date of Birth",
+            value=curr_data["dob"],
+            min_value=date(1920, 1, 1),
+            max_value=date.today(),
+            format="DD/MM/YYYY",
+        )
+        ret_age = st.number_input(
+            "Target Retirement Age", min_value=50, max_value=85, value=int(curr_data["ret_age"])
+        )
+        monthly_inc = st.number_input(
+            "Desired Monthly Income (£)",
+            min_value=100.0,
+            value=float(curr_data["monthly_inc"]),
+            step=100.0,
+        )
+        increased_monthly_inc = st.number_input(
+            "Increase Income To (£)",
+            min_value=0.0,
+            value=float(curr_data.get("increased_monthly_inc", 0.0)),
+            step=100.0,
+            help="Set above £0 to step up monthly income from Increase Date onwards.",
+        )
+        increase_date = st.date_input(
+            "Increase Date",
+            value=curr_data.get("increase_date", get_next_tax_year_start()),
+            min_value=date(2020, 1, 1),
+            max_value=date(2070, 12, 31),
+            format="DD/MM/YYYY",
+        )
+        default_reduced_inc = curr_data.get("reduced_monthly_inc", curr_data["monthly_inc"])
+        reduced_monthly_inc = st.number_input(
+            "Reduce Income To (£)",
+            min_value=0.0,
+            value=float(default_reduced_inc),
+            step=50.0,
+            help="Defaults to matching Desired Monthly Income unless explicitly changed.",
+        )
+        reduced_inc_age = st.number_input(
+            "Reduced Income Age",
+            min_value=50,
+            max_value=100,
+            value=int(curr_data.get("reduced_inc_age", 80)),
+        )
+        inflation_rate = st.slider(
+            "Annual Inflation Rate (%)",
+            min_value=0.0,
+            max_value=10.0,
+            value=float(curr_data.get("inflation_rate", 3.0)),
+            step=0.1,
+        )
+
+    with st.expander("💵 Lump Sum Injections / Withdrawals (Up to 3)", expanded=False):
+        pot_options = ["S&S ISA", "SIPP", "Private Pension", "Other Investment"]
+
+        st.markdown("##### Lump Sum 1")
+        ls1_amt = st.number_input("Lump Sum 1 Amount (£)", min_value=-1000000.0, value=float(curr_data.get("lump_sum_1_amt", 0.0)), step=1000.0, help="Enter a negative amount to simulate a withdrawal.")
+        ls1_date = st.date_input("Lump Sum 1 Date", value=curr_data.get("lump_sum_1_date", get_next_tax_year_start()), min_value=date(1980, 1, 1), format="DD/MM/YYYY")
+        ls1_pot = st.selectbox("Lump Sum 1 Target Pot", options=pot_options, index=pot_options.index("Private Pension" if curr_data.get("lump_sum_1_pot") == "Workplace Pension" else curr_data.get("lump_sum_1_pot", "S&S ISA")), key="ls1_pot_sel")
+
+        st.markdown("##### Lump Sum 2")
+        ls2_amt = st.number_input("Lump Sum 2 Amount (£)", min_value=-1000000.0, value=float(curr_data.get("lump_sum_2_amt", 0.0)), step=1000.0, help="Enter a negative amount to simulate a withdrawal.")
+        ls2_date = st.date_input("Lump Sum 2 Date", value=curr_data.get("lump_sum_2_date", get_next_tax_year_start()), min_value=date(1980, 1, 1), format="DD/MM/YYYY")
+        ls2_pot = st.selectbox("Lump Sum 2 Target Pot", options=pot_options, index=pot_options.index("Private Pension" if curr_data.get("lump_sum_2_pot") == "Workplace Pension" else curr_data.get("lump_sum_2_pot", "S&S ISA")), key="ls2_pot_sel")
+
+        st.markdown("##### Lump Sum 3")
+        ls3_amt = st.number_input("Lump Sum 3 Amount (£)", min_value=-1000000.0, value=float(curr_data.get("lump_sum_3_amt", 0.0)), step=1000.0, help="Enter a negative amount to simulate a withdrawal.")
+        ls3_date = st.date_input("Lump Sum 3 Date", value=curr_data.get("lump_sum_3_date", get_next_tax_year_start()), min_value=date(1980, 1, 1), format="DD/MM/YYYY")
+        ls3_pot = st.selectbox("Lump Sum 3 Target Pot", options=pot_options, index=pot_options.index("Private Pension" if curr_data.get("lump_sum_3_pot") == "Workplace Pension" else curr_data.get("lump_sum_3_pot", "S&S ISA")), key="ls3_pot_sel")
+
+    with st.expander("🏛️ Gilts & Bonds (Up to 5)", expanded=False):
+        max_gilt_maturity = date(date.today().year + 50, 12, 31)
+
+        st.markdown("##### Gilt / Bond 1")
+        g1_amt = st.number_input("Gilt 1 Nominal Amount (£)", min_value=0.0, value=float(curr_data.get("gilt_1_amt", 0.0)), step=1000.0, key="g1_amt_input")
+        g1_price = st.number_input("Gilt 1 Purchase Price (%)", min_value=1.0, max_value=200.0, value=float(curr_data.get("gilt_1_price", 100.0)), step=0.5, key="g1_price_input")
+        g1_p_date = st.date_input("Gilt 1 Purchase Date", value=curr_data.get("gilt_1_p_date", get_next_tax_year_start()), min_value=date.today(), max_value=max_gilt_maturity, format="DD/MM/YYYY", key="g1_p_date_input")
+        g1_m_date = st.date_input("Gilt 1 Maturity Date", value=curr_data.get("gilt_1_m_date", get_next_tax_year_start()), min_value=date.today(), max_value=max_gilt_maturity, format="DD/MM/YYYY", key="g1_m_date_input")
+        g1_pot = st.selectbox("Gilt 1 Source/Target Pot", options=pot_options, index=pot_options.index(curr_data.get("gilt_1_pot", "S&S ISA")) if curr_data.get("gilt_1_pot", "S&S ISA") in pot_options else 0, key="g1_pot_sel")
+        g1_coupon_pct = st.number_input("Gilt 1 Annual Coupon / Interest (%)", min_value=0.0, max_value=30.0, value=float(curr_data.get("gilt_1_coupon_pct", 0.0)), step=0.1, key="g1_coupon_input")
+
+        st.markdown("##### Gilt / Bond 2")
+        g2_amt = st.number_input("Gilt 2 Nominal Amount (£)", min_value=0.0, value=float(curr_data.get("gilt_2_amt", 0.0)), step=1000.0, key="g2_amt_input")
+        g2_price = st.number_input("Gilt 2 Purchase Price (%)", min_value=1.0, max_value=200.0, value=float(curr_data.get("gilt_2_price", 100.0)), step=0.5, key="g2_price_input")
+        g2_p_date = st.date_input("Gilt 2 Purchase Date", value=curr_data.get("gilt_2_p_date", get_next_tax_year_start()), min_value=date.today(), max_value=max_gilt_maturity, format="DD/MM/YYYY", key="g2_p_date_input")
+        g2_m_date = st.date_input("Gilt 2 Maturity Date", value=curr_data.get("gilt_2_m_date", get_next_tax_year_start()), min_value=date.today(), max_value=max_gilt_maturity, format="DD/MM/YYYY", key="g2_m_date_input")
+        g2_pot = st.selectbox("Gilt 2 Source/Target Pot", options=pot_options, index=pot_options.index(curr_data.get("gilt_2_pot", "S&S ISA")) if curr_data.get("gilt_2_pot", "S&S ISA") in pot_options else 0, key="g2_pot_sel")
+        g2_coupon_pct = st.number_input("Gilt 2 Annual Coupon / Interest (%)", min_value=0.0, max_value=30.0, value=float(curr_data.get("gilt_2_coupon_pct", 0.0)), step=0.1, key="g2_coupon_input")
+
+        st.markdown("##### Gilt / Bond 3")
+        g3_amt = st.number_input("Gilt 3 Nominal Amount (£)", min_value=0.0, value=float(curr_data.get("gilt_3_amt", 0.0)), step=1000.0, key="g3_amt_input")
+        g3_price = st.number_input("Gilt 3 Purchase Price (%)", min_value=1.0, max_value=200.0, value=float(curr_data.get("gilt_3_price", 100.0)), step=0.5, key="g3_price_input")
+        g3_p_date = st.date_input("Gilt 3 Purchase Date", value=curr_data.get("gilt_3_p_date", get_next_tax_year_start()), min_value=date.today(), max_value=max_gilt_maturity, format="DD/MM/YYYY", key="g3_p_date_input")
+        g3_m_date = st.date_input("Gilt 3 Maturity Date", value=curr_data.get("gilt_3_m_date", get_next_tax_year_start()), min_value=date.today(), max_value=max_gilt_maturity, format="DD/MM/YYYY", key="g3_m_date_input")
+        g3_pot = st.selectbox("Gilt 3 Source/Target Pot", options=pot_options, index=pot_options.index(curr_data.get("gilt_3_pot", "S&S ISA")) if curr_data.get("gilt_3_pot", "S&S ISA") in pot_options else 0, key="g3_pot_sel")
+        g3_coupon_pct = st.number_input("Gilt 3 Annual Coupon / Interest (%)", min_value=0.0, max_value=30.0, value=float(curr_data.get("gilt_3_coupon_pct", 0.0)), step=0.1, key="g3_coupon_input")
+
+        st.markdown("##### Gilt / Bond 4")
+        g4_amt = st.number_input("Gilt 4 Nominal Amount (£)", min_value=0.0, value=float(curr_data.get("gilt_4_amt", 0.0)), step=1000.0, key="g4_amt_input")
+        g4_price = st.number_input("Gilt 4 Purchase Price (%)", min_value=1.0, max_value=200.0, value=float(curr_data.get("gilt_4_price", 100.0)), step=0.5, key="g4_price_input")
+        g4_p_date = st.date_input("Gilt 4 Purchase Date", value=curr_data.get("gilt_4_p_date", get_next_tax_year_start()), min_value=date.today(), max_value=max_gilt_maturity, format="DD/MM/YYYY", key="g4_p_date_input")
+        g4_m_date = st.date_input("Gilt 4 Maturity Date", value=curr_data.get("gilt_4_m_date", get_next_tax_year_start()), min_value=date.today(), max_value=max_gilt_maturity, format="DD/MM/YYYY", key="g4_m_date_input")
+        g4_pot = st.selectbox("Gilt 4 Source/Target Pot", options=pot_options, index=pot_options.index(curr_data.get("gilt_4_pot", "S&S ISA")) if curr_data.get("gilt_4_pot", "S&S ISA") in pot_options else 0, key="g4_pot_sel")
+        g4_coupon_pct = st.number_input("Gilt 4 Annual Coupon / Interest (%)", min_value=0.0, max_value=30.0, value=float(curr_data.get("gilt_4_coupon_pct", 0.0)), step=0.1, key="g4_coupon_input")
+
+        st.markdown("##### Gilt / Bond 5")
+        g5_amt = st.number_input("Gilt 5 Nominal Amount (£)", min_value=0.0, value=float(curr_data.get("gilt_5_amt", 0.0)), step=1000.0, key="g5_amt_input")
+        g5_price = st.number_input("Gilt 5 Purchase Price (%)", min_value=1.0, max_value=200.0, value=float(curr_data.get("gilt_5_price", 100.0)), step=0.5, key="g5_price_input")
+        g5_p_date = st.date_input("Gilt 5 Purchase Date", value=curr_data.get("gilt_5_p_date", get_next_tax_year_start()), min_value=date.today(), max_value=max_gilt_maturity, format="DD/MM/YYYY", key="g5_p_date_input")
+        g5_m_date = st.date_input("Gilt 5 Maturity Date", value=curr_data.get("gilt_5_m_date", get_next_tax_year_start()), min_value=date.today(), max_value=max_gilt_maturity, format="DD/MM/YYYY", key="g5_m_date_input")
+        g5_pot = st.selectbox("Gilt 5 Source/Target Pot", options=pot_options, index=pot_options.index(curr_data.get("gilt_5_pot", "S&S ISA")) if curr_data.get("gilt_5_pot", "S&S ISA") in pot_options else 0, key="g5_pot_sel")
+        g5_coupon_pct = st.number_input("Gilt 5 Annual Coupon / Interest (%)", min_value=0.0, max_value=30.0, value=float(curr_data.get("gilt_5_coupon_pct", 0.0)), step=0.1, key="g5_coupon_input")
+
+    try:
+        max_crash_date = date(dob.year + 100, dob.month, dob.day)
+    except ValueError:
+        max_crash_date = date(dob.year + 100, 2, 28)
+
+    with st.expander("📉 Market Stress Testing", expanded=False):
+        crash_pct = st.slider(
+            "Market Crash (%)",
+            min_value=0.0,
+            max_value=75.0,
+            value=float(curr_data.get("crash_pct", 0.0)),
+            step=1.0,
+        )
+        crash_date = st.date_input(
+            "Crash Date",
+            value=curr_data.get("crash_date", get_next_tax_year_start()),
+            min_value=date.today(),
+            max_value=max_crash_date,
+            format="DD/MM/YYYY",
+        )
+
+    with st.expander("📜 Pension Annuity / Defined Benefit (e.g. GMPF)", expanded=False):
+        annuity_annual = st.number_input("Annual Pension / Annuity Baseline (£)", min_value=0.0, value=float(curr_data.get("annuity_annual", 0.0)), step=100.0, help="Unreduced baseline annual pension value (e.g. £2,989.38 for GMPF).")
+        annuity_cost = st.number_input("Cost of Annuity (£)", min_value=0.0, value=float(curr_data.get("annuity_cost", 0.0)), step=5000.0, help="Leave at £0 for Defined Benefit / Final Salary pensions.")
+        annuity_start_age = st.number_input(
+            "Annuity / DB Pension Start Age",
+            min_value=50,
+            max_value=85,
+            value=int(curr_data.get("annuity_start_age", ret_age)),
+            step=1,
+            help="Age when payment starts. Defaults to Target Retirement Age.",
+        )
+        annuity_npa = st.number_input("Normal Pension Age (NPA)", min_value=55, max_value=75, value=int(curr_data.get("
