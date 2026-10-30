@@ -556,9 +556,15 @@ class RetirementEngine:
         isa_credited_this_tax_year = 0.0
         last_tax_year = self._get_tax_year(current_date)
         annuity_purchased = False
+        
+        # Crash & Market Index Recovery tracking variables
         crash_applied = False
+        in_market_recovery = False
+        market_index = 1.0
+        pre_crash_index_target = 1.0
         crash_active_until = None
         crash_capped_income = None
+        
         lump_sums_applied = [False] * len(self.scenario.lump_sums)
 
         gilt_events_map = self._build_gilt_events()
@@ -732,17 +738,26 @@ class RetirementEngine:
                         elif target_pot == "Other Investment":
                             other += amt
 
+            # ------------------------------------------------------------------
+            # Market Crash Trigger & Market Recovery Tracking
+            # ------------------------------------------------------------------
             if (
                 not crash_applied
                 and self.scenario.crash_pct > 0
                 and current_date >= self.scenario.crash_date
             ):
+                pre_crash_index_target = market_index
                 drop_factor = 1.0 - (self.scenario.crash_pct / 100.0)
+                
                 sipp *= drop_factor
                 wp_taxable *= drop_factor
                 wp_tax_free *= drop_factor
                 isa *= drop_factor
+                market_index *= drop_factor
+                
                 crash_applied = True
+                in_market_recovery = True
+                
                 try:
                     crash_active_until = date(
                         self.scenario.crash_date.year + 2,
@@ -792,11 +807,25 @@ class RetirementEngine:
                 isa += self.scenario.isa.monthly_contrib
                 other += self.scenario.other_investment.monthly_contrib
 
-            sipp *= 1.0 + self._get_daily_rate(self.scenario.sipp.annual_return)
-            wp_taxable *= 1.0 + self._get_daily_rate(self.scenario.workplace_taxable.annual_return)
-            wp_tax_free *= 1.0 + self._get_daily_rate(self.scenario.workplace_tax_free.annual_return)
-            isa *= 1.0 + self._get_daily_rate(self.scenario.isa.annual_return)
+            # ------------------------------------------------------------------
+            # Dynamic Pot Growth & Accelerated Rebound Return Multiplier
+            # ------------------------------------------------------------------
+            if in_market_recovery and market_index >= pre_crash_index_target:
+                in_market_recovery = False
+
+            return_mult = 2.0 if in_market_recovery else 1.0
+
+            effective_sipp_ret = self.scenario.sipp.annual_return * return_mult
+            effective_wp_ret = self.scenario.workplace_pension_return * return_mult
+            effective_isa_ret = self.scenario.isa.annual_return * return_mult
+
+            sipp *= 1.0 + self._get_daily_rate(effective_sipp_ret)
+            wp_taxable *= 1.0 + self._get_daily_rate(effective_wp_ret)
+            wp_tax_free *= 1.0 + self._get_daily_rate(effective_wp_ret)
+            isa *= 1.0 + self._get_daily_rate(effective_isa_ret)
             
+            market_index *= 1.0 + self._get_daily_rate(effective_isa_ret)
+
             other_growth = other * self._get_daily_rate(self.scenario.other_investment.annual_return)
             other_tax_on_growth = other_growth * 0.18
             other += (other_growth - other_tax_on_growth)
@@ -1955,11 +1984,10 @@ with col_notes1:
            * **State Pension:** Applied automatically once you reach your configured State Pension age, escalating annually by your growth input.
            * **Excess Income Recycling:** If guaranteed income exceeds your target inflation-adjusted monthly income, the surplus is automatically deposited into your **S&S ISA** (up to the **£20,000/year** limit), with any remaining excess directed to **Other Investments**.
 
-        2. **Market Stress Buffer Strategy (> 5% Crash Trigger):**
-           * If a market crash of **> 5%** occurs (configurable at any age up to 100), the engine enters a **2-year recovery window**.
-           * During recovery, equity pots (**SIPP**, **Private Pension**, **ISA**) are protected from panic sell-offs.
-           * **Income Reduction Rule:** Your target monthly income is automatically reduced to match the **State Pension amount** calculated at the date of the crash.
-           * **Post-Recovery:** After the 2-year window expires, your desired monthly income resumes at its full inflation-adjusted level.
+        2. **Market Stress Buffer & Rebound Strategy (> 5% Crash Trigger):**
+           * If a market crash occurs, equity pots (**SIPP**, **Private Pension**, **ISA**) drop by the configured percentage.
+           * **Accelerated Rebound Rule:** During market recovery, growth rates across equity pots are temporarily **doubled ($2.0 \times r$)** until the underlying market index recovers back to its pre-crash level.
+           * **Income Protection Buffer:** If configured, target monthly income is capped to the State Pension level for 2 years post-crash to protect pots from sequence-of-returns risk.
 
         3. **Standard Tax-Optimized Drawdown Hierarchy:**
            When guaranteed income is insufficient, the required shortfall is satisfied using the following priority order:
