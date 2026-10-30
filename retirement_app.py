@@ -1,11 +1,8 @@
 from dataclasses import dataclass, field
 from datetime import date, timedelta
 import json
-import os
-import calendar
-from typing import List, Tuple
 import uuid
-import base64
+from typing import List, Tuple
 import pandas as pd
 import requests
 import streamlit as st
@@ -21,11 +18,11 @@ def get_next_tax_year_start(from_date: date = None) -> date:
 
 
 # Configure Streamlit page layout
-st.set_page_config(page_title="Retirement Scenario Planner", layout="wide")
+st.set_page_config(page_title="Joint Retirement Scenario Planner", layout="wide")
 
 
 # ----------------------------------------------------------------------
-# 0. Password Protection Gate (Placed at top before any UI renders)
+# 0. Password Protection Gate
 # ----------------------------------------------------------------------
 
 def check_password():
@@ -52,321 +49,12 @@ if not check_password():
     st.stop()
 
 
-st.title("📈 Retirement Forecast & Drawdown Engine")
-
-# ----------------------------------------------------------------------
-# 1. Google Sheets Persistence & Default Scenarios
-# ----------------------------------------------------------------------
-
-DEFAULT_PROFILES = {
-    "Base Case": {
-        "dob": date(1969, 12, 1),
-        "ret_age": 62,
-        "monthly_inc": 2500.0,
-        "increased_monthly_inc": 0.0,
-        "increase_date": get_next_tax_year_start(),
-        "reduced_monthly_inc": 2500.0,
-        "reduced_inc_age": 80,
-        "inflation_rate": 3.0,
-        "sipp_bal": 52500.0,
-        "sipp_ret": 7.0,
-        "sipp_contrib": 500.0,
-        "wp_bal": 250000.0,
-        "wp_ret": 7.0,
-        "wp_contrib": 700.0,
-        "isa_bal": 105000.0,
-        "isa_ret": 7.0,
-        "isa_contrib": 0.0,
-        "other_bal": 57000.0,
-        "other_ret": 3.0,
-        "other_contrib": 0.0,
-        "has_state_pension": True,
-        "state_pension_age": 67,
-        "state_pension_amount": 12548.0,
-        "state_pension_growth": 2.5,
-        "annuity_annual": 0.0,
-        "annuity_cost": 0.0,
-        "annuity_start_age": 62,
-        "annuity_npa": 65,
-        "annuity_type": "Inflation-Linked (RPI/CPI)",
-        "inflate_annuity_to_start": False,
-        "apply_db_early_reduction": True,
-        "has_nuvos_pension": False,
-        "nuvos_annual": 15929.31,
-        "nuvos_baseline_date": date(2025, 3, 31),
-        "nuvos_npa": 65,
-        "nuvos_pause_enabled": True,
-        "nuvos_pause_date": get_next_tax_year_start(),
-        "nuvos_salary": 57015.0,
-        "nuvos_accrual_rate": 2.3,
-        "apply_nuvos_early_reduction": True,
-        "lump_sum_1_amt": 0.0,
-        "lump_sum_1_date": get_next_tax_year_start(),
-        "lump_sum_1_pot": "S&S ISA",
-        "lump_sum_2_amt": 0.0,
-        "lump_sum_2_date": get_next_tax_year_start(),
-        "lump_sum_2_pot": "S&S ISA",
-        "lump_sum_3_amt": 0.0,
-        "lump_sum_3_date": get_next_tax_year_start(),
-        "lump_sum_3_pot": "S&S ISA",
-        "gilt_1_amt": 0.0,
-        "gilt_1_price": 100.0,
-        "gilt_1_p_date": get_next_tax_year_start(),
-        "gilt_1_m_date": get_next_tax_year_start(),
-        "gilt_1_pot": "S&S ISA",
-        "gilt_1_coupon_pct": 0.0,
-        "gilt_2_amt": 0.0,
-        "gilt_2_price": 100.0,
-        "gilt_2_p_date": get_next_tax_year_start(),
-        "gilt_2_m_date": get_next_tax_year_start(),
-        "gilt_2_pot": "S&S ISA",
-        "gilt_2_coupon_pct": 0.0,
-        "gilt_3_amt": 0.0,
-        "gilt_3_price": 100.0,
-        "gilt_3_p_date": get_next_tax_year_start(),
-        "gilt_3_m_date": get_next_tax_year_start(),
-        "gilt_3_pot": "S&S ISA",
-        "gilt_3_coupon_pct": 0.0,
-        "gilt_4_amt": 0.0,
-        "gilt_4_price": 100.0,
-        "gilt_4_p_date": get_next_tax_year_start(),
-        "gilt_4_m_date": get_next_tax_year_start(),
-        "gilt_4_pot": "S&S ISA",
-        "gilt_4_coupon_pct": 0.0,
-        "gilt_5_amt": 0.0,
-        "gilt_5_price": 100.0,
-        "gilt_5_p_date": get_next_tax_year_start(),
-        "gilt_5_m_date": get_next_tax_year_start(),
-        "gilt_5_pot": "S&S ISA",
-        "gilt_5_coupon_pct": 0.0,
-        "crash_pct": 0.0,
-        "crash_date": get_next_tax_year_start(),
-        "view_mode": "Age Year (Annual)",
-        "notes": "",
-        "budget_items": [
-            {"id": str(uuid.uuid4()), "item": "Housing / Council Tax", "amount": 800.0, "month_paid": "Monthly", "annual_amount": 9600.0},
-            {"id": str(uuid.uuid4()), "item": "Utilities & Broadband", "amount": 250.0, "month_paid": "Monthly", "annual_amount": 3000.0},
-            {"id": str(uuid.uuid4()), "item": "Groceries", "amount": 400.0, "month_paid": "Monthly", "annual_amount": 4800.0},
-            {"id": str(uuid.uuid4()), "item": "Transport & Fuel", "amount": 200.0, "month_paid": "Monthly", "annual_amount": 2400.0},
-            {"id": str(uuid.uuid4()), "item": "Leisure & Holidays", "amount": 350.0, "month_paid": "Monthly", "annual_amount": 4200.0},
-        ],
-    },
-    "Karen": {
-        "dob": date(1980, 10, 16),
-        "ret_age": 57,
-        "monthly_inc": 2500.0,
-        "increased_monthly_inc": 0.0,
-        "increase_date": get_next_tax_year_start(),
-        "reduced_monthly_inc": 2500.0,
-        "reduced_inc_age": 80,
-        "inflation_rate": 3.0,
-        "sipp_bal": 0.0,
-        "sipp_ret": 7.0,
-        "sipp_contrib": 0.0,
-        "wp_bal": 0.0,
-        "wp_ret": 7.0,
-        "wp_contrib": 0.0,
-        "isa_bal": 0.0,
-        "isa_ret": 7.0,
-        "isa_contrib": 0.0,
-        "other_bal": 0.0,
-        "other_ret": 3.0,
-        "other_contrib": 0.0,
-        "has_state_pension": True,
-        "state_pension_age": 67,
-        "state_pension_amount": 12548.0,
-        "state_pension_growth": 2.5,
-        "annuity_annual": 2989.38,
-        "annuity_cost": 0.0,
-        "annuity_start_age": 57,
-        "annuity_npa": 65,
-        "annuity_type": "Inflation-Linked (RPI/CPI)",
-        "inflate_annuity_to_start": True,
-        "apply_db_early_reduction": True,
-        "has_nuvos_pension": True,
-        "nuvos_annual": 15929.31,
-        "nuvos_baseline_date": date(2025, 3, 31),
-        "nuvos_npa": 65,
-        "nuvos_pause_enabled": True,
-        "nuvos_pause_date": date(2037, 10, 16),
-        "nuvos_salary": 57015.0,
-        "nuvos_accrual_rate": 2.3,
-        "apply_nuvos_early_reduction": True,
-        "lump_sum_1_amt": 6214.78,
-        "lump_sum_1_date": date(2037, 10, 16),
-        "lump_sum_1_pot": "S&S ISA",
-        "lump_sum_2_amt": 0.0,
-        "lump_sum_2_date": get_next_tax_year_start(),
-        "lump_sum_2_pot": "S&S ISA",
-        "lump_sum_3_amt": 0.0,
-        "lump_sum_3_date": get_next_tax_year_start(),
-        "lump_sum_3_pot": "S&S ISA",
-        "gilt_1_amt": 0.0,
-        "gilt_1_price": 100.0,
-        "gilt_1_p_date": get_next_tax_year_start(),
-        "gilt_1_m_date": get_next_tax_year_start(),
-        "gilt_1_pot": "S&S ISA",
-        "gilt_1_coupon_pct": 0.0,
-        "gilt_2_amt": 0.0,
-        "gilt_2_price": 100.0,
-        "gilt_2_p_date": get_next_tax_year_start(),
-        "gilt_2_m_date": get_next_tax_year_start(),
-        "gilt_2_pot": "S&S ISA",
-        "gilt_2_coupon_pct": 0.0,
-        "gilt_3_amt": 0.0,
-        "gilt_3_price": 100.0,
-        "gilt_3_p_date": get_next_tax_year_start(),
-        "gilt_3_m_date": get_next_tax_year_start(),
-        "gilt_3_pot": "S&S ISA",
-        "gilt_3_coupon_pct": 0.0,
-        "gilt_4_amt": 0.0,
-        "gilt_4_price": 100.0,
-        "gilt_4_p_date": get_next_tax_year_start(),
-        "gilt_4_m_date": get_next_tax_year_start(),
-        "gilt_4_pot": "S&S ISA",
-        "gilt_4_coupon_pct": 0.0,
-        "gilt_5_amt": 0.0,
-        "gilt_5_price": 100.0,
-        "gilt_5_p_date": get_next_tax_year_start(),
-        "gilt_5_m_date": get_next_tax_year_start(),
-        "gilt_5_pot": "S&S ISA",
-        "gilt_5_coupon_pct": 0.0,
-        "crash_pct": 0.0,
-        "crash_date": get_next_tax_year_start(),
-        "view_mode": "Age Year (Annual)",
-        "notes": "",
-        "budget_items": [
-            {"id": str(uuid.uuid4()), "item": "Housing / Council Tax", "amount": 700.0, "month_paid": "Monthly", "annual_amount": 8400.0},
-            {"id": str(uuid.uuid4()), "item": "Utilities & Broadband", "amount": 200.0, "month_paid": "Monthly", "annual_amount": 2400.0},
-            {"id": str(uuid.uuid4()), "item": "Groceries", "amount": 350.0, "month_paid": "Monthly", "annual_amount": 4200.0},
-            {"id": str(uuid.uuid4()), "item": "Transport & Fuel", "amount": 150.0, "month_paid": "Monthly", "annual_amount": 1800.0},
-        ],
-    },
-}
-
-MONTH_OPTIONS = [
-    "Monthly",
-    "January", "February", "March", "April", "May", "June",
-    "July", "August", "September", "October", "November", "December"
-]
-
-
-def serialize_scenario(scen_dict: dict) -> dict:
-    serialized = {}
-    for k, v in scen_dict.items():
-        if isinstance(v, date):
-            serialized[k] = v.isoformat()
-        else:
-            serialized[k] = v
-    return serialized
-
-
-def deserialize_scenario(scen_dict: dict) -> dict:
-    deserialized = {}
-    for k, v in scen_dict.items():
-        if isinstance(v, str):
-            try:
-                deserialized[k] = date.fromisoformat(v)
-            except ValueError:
-                deserialized[k] = v
-        else:
-            deserialized[k] = v
-
-    if "budget_items" not in deserialized:
-        deserialized["budget_items"] = []
-    else:
-        for item in deserialized["budget_items"]:
-            if "id" not in item:
-                item["id"] = str(uuid.uuid4())
-            if "category" in item and "item" not in item:
-                item["item"] = item.pop("category")
-            if "month_paid" not in item:
-                item["month_paid"] = "Monthly"
-            if "annual_amount" not in item:
-                item["annual_amount"] = item.get("amount", 0.0) * 12.0
-    return deserialized
-
-
-def load_scenarios() -> dict:
-    scenarios = {k: v.copy() for k, v in DEFAULT_PROFILES.items()}
-    try:
-        conn = st.connection("gsheets", type=GSheetsConnection)
-        df = conn.read(worksheet="Sheet1", usecols=[0, 1], ttl=0)
-        if not df.empty:
-            loaded = {}
-            for index, row in df.iterrows():
-                if pd.notna(row.get("Profile")) and pd.notna(row.get("JSON_Data")):
-                    profile_name = str(row["Profile"])
-                    json_string = str(row["JSON_Data"])
-                    scen_dict = json.loads(json_string)
-                    loaded[profile_name] = deserialize_scenario(scen_dict)
-            scenarios.update(loaded)
-    except Exception as e:
-        pass
-    return scenarios
-
-
-def save_scenarios():
-    rows = []
-    for name, scen in st.session_state.scenarios.items():
-        serialized_scen = serialize_scenario(scen)
-        json_string = json.dumps(serialized_scen)
-        rows.append({"Profile": name, "JSON_Data": json_string})
-    df = pd.DataFrame(rows)
-    try:
-        conn = st.connection("gsheets", type=GSheetsConnection)
-        conn.update(worksheet="Sheet1", data=df)
-        st.cache_data.clear()
-    except Exception as e:
-        st.error(f"Failed to save to Google Sheets: {e}")
-        st.stop()
-
-
-# Initialize Session State
-if "scenarios" not in st.session_state:
-    st.session_state.scenarios = load_scenarios()
-
-if "active_scenario_name" not in st.session_state or st.session_state.active_scenario_name not in st.session_state.scenarios:
-    st.session_state.active_scenario_name = list(st.session_state.scenarios.keys())[0]
+st.title("📈 Joint Retirement Forecast & Dual-Drawdown Engine")
 
 
 # ----------------------------------------------------------------------
-# 2. Data Models & Reduction Calculation Helper
+# 1. Full Data Structures for Joint Profiles
 # ----------------------------------------------------------------------
-
-def calculate_early_retirement_reduction_factor(start_age: float, npa: float = 65.0) -> float:
-    """
-    Calculates standard UK Public Sector / DB Actuarial Early Retirement Reduction Factor.
-    Standard GAD reduction table mapping years early (NPA - start_age) to pension payout factor.
-    """
-    years_early = max(0.0, npa - start_age)
-    if years_early == 0:
-        return 1.0
-    
-    # Standard GAD DB Early Retirement Pension Reduction Factors
-    gad_reductions = {
-        0: 0.00,
-        1: 0.050,
-        2: 0.096,
-        3: 0.139,
-        4: 0.179,
-        5: 0.215,
-        6: 0.249,
-        7: 0.281,
-        8: 0.311,
-        9: 0.339,
-        10: 0.366,
-    }
-    
-    int_years = int(years_early)
-    frac = years_early - int_years
-    
-    base_red = gad_reductions.get(min(int_years, 10), 0.366 + (min(int_years, 10) - 10) * 0.025)
-    next_red = gad_reductions.get(min(int_years + 1, 10), base_red + 0.025)
-    
-    actual_reduction_pct = base_red + (next_red - base_red) * frac
-    return max(0.0, 1.0 - actual_reduction_pct)
-
 
 @dataclass
 class PotConfig:
@@ -383,18 +71,10 @@ class LumpSum:
 
 
 @dataclass
-class GiltBond:
-    amount: float = 0.0
-    purchase_price_pct: float = 100.0
-    purchase_date: date = field(default_factory=get_next_tax_year_start)
-    maturity_date: date = field(default_factory=get_next_tax_year_start)
-    target_pot: str = "S&S ISA"
-    coupon_pct: float = 0.0
-
-
-@dataclass
-class Scenario:
+class PersonProfile:
     name: str
+    dob: date
+    ret_age: int
     sipp: PotConfig
     workplace_pension_total: float
     workplace_pension_return: float
@@ -404,32 +84,22 @@ class Scenario:
     has_state_pension: bool
     state_pension_age: int
     state_pension_amount: float
-    lump_sums: List[LumpSum] = field(default_factory=list)
-    gilts_bonds: List[GiltBond] = field(default_factory=list)
     state_pension_growth: float = 0.025
-    inflation_rate: float = 0.03
     annuity_annual: float = 0.0
-    annuity_cost: float = 0.0
     annuity_start_age: int = 65
     annuity_npa: int = 65
     annuity_type: str = "Inflation-Linked (RPI/CPI)"
-    inflate_annuity_to_start: bool = False
     apply_db_early_reduction: bool = True
     has_nuvos_pension: bool = False
-    nuvos_annual: float = 15929.31
+    nuvos_annual: float = 0.0
     nuvos_baseline_date: date = field(default_factory=lambda: date(2025, 3, 31))
     nuvos_npa: int = 65
     nuvos_pause_enabled: bool = True
     nuvos_pause_date: date = field(default_factory=get_next_tax_year_start)
-    nuvos_salary: float = 57015.0
+    nuvos_salary: float = 0.0
     nuvos_accrual_rate: float = 2.3
     apply_nuvos_early_reduction: bool = True
-    increased_monthly_inc: float = 0.0
-    increase_date: date = field(default_factory=get_next_tax_year_start)
-    reduced_monthly_inc: float = 2500.0
-    reduced_inc_age: int = 80
-    crash_pct: float = 0.0
-    crash_date: date = field(default_factory=get_next_tax_year_start)
+    lump_sums: List[LumpSum] = field(default_factory=list)
 
     workplace_tax_free: PotConfig = field(init=False)
     workplace_taxable: PotConfig = field(init=False)
@@ -447,38 +117,33 @@ class Scenario:
         )
 
 
+@dataclass
+class JointScenario:
+    name: str
+    p1: PersonProfile
+    p2: PersonProfile
+    household_monthly_income: float
+    inflation_rate: float = 0.03
+    crash_pct: float = 0.0
+    crash_date: date = field(default_factory=get_next_tax_year_start)
+
+
 # ----------------------------------------------------------------------
-# 3. Calculation & Drawdown Engine
+# 2. Joint Calculation & Dual-Drawdown Engine
 # ----------------------------------------------------------------------
 
-class RetirementEngine:
+class JointRetirementEngine:
     PERSONAL_ALLOWANCE = 12570.0
     BASIC_TAX_RATE = 0.20
-    ISA_ANNUAL_ALLOWANCE = 20000.0
 
-    def __init__(
-        self,
-        dob: date,
-        retirement_age: int,
-        monthly_income: float,
-        scenario: Scenario,
-    ):
-        self.dob = dob
-        self.retirement_age = retirement_age
-        self.monthly_income = monthly_income
-        self.scenario = scenario
+    def __init__(self, joint_scenario: JointScenario):
+        self.scenario = joint_scenario
+        self.p1 = joint_scenario.p1
+        self.p2 = joint_scenario.p2
 
     @staticmethod
     def _get_daily_rate(annual_rate: float) -> float:
         return (1.0 + annual_rate) ** (1.0 / 365.0) - 1.0
-
-    @staticmethod
-    def _calculate_age(dob: date, current_date: date) -> int:
-        return (
-            current_date.year
-            - dob.year
-            - ((current_date.month, current_date.day) < (dob.month, dob.day))
-        )
 
     @staticmethod
     def _get_tax_year(d: date) -> str:
@@ -486,1548 +151,266 @@ class RetirementEngine:
             return f"{d.year}/{str(d.year + 1)[2:]}"
         return f"{d.year - 1}/{str(d.year)[2:]}"
 
-    @staticmethod
-    def _subtract_6_months(d: date) -> date:
-        month = d.month - 6
-        year = d.year
-        if month <= 0:
-            month += 12
-            year -= 1
-        last_day = calendar.monthrange(year, month)[1]
-        day = min(d.day, last_day)
-        return date(year, month, day)
-
-    def _build_gilt_events(self) -> dict:
-        events_map = {}
-        for gilt in self.scenario.gilts_bonds:
-            if gilt.amount <= 0 or gilt.purchase_date >= gilt.maturity_date:
-                continue
-            cost = gilt.amount * (gilt.purchase_price_pct / 100.0)
-            events_map.setdefault(gilt.purchase_date, []).append(("purchase", cost, gilt.target_pot))
-            events_map.setdefault(gilt.maturity_date, []).append(("maturity", gilt.amount, gilt.target_pot))
-            annual_coupon_cash = gilt.amount * (gilt.coupon_pct / 100.0)
-            if annual_coupon_cash > 0:
-                curr = gilt.maturity_date
-                coupon_dates = []
-                while curr > gilt.purchase_date:
-                    coupon_dates.append(curr)
-                    curr = self._subtract_6_months(curr)
-                coupon_dates.append(curr)
-                coupon_dates.sort()
-                for i in range(1, len(coupon_dates)):
-                    p_start = coupon_dates[i-1]
-                    p_end = coupon_dates[i]
-                    pay_date = p_end
-                    if pay_date > gilt.maturity_date:
-                        pay_date = gilt.maturity_date
-                    period_total_days = (p_end - p_start).days
-                    held_start = max(p_start, gilt.purchase_date)
-                    held_end = min(p_end, gilt.maturity_date)
-                    held_days = (held_end - held_start).days
-                    if period_total_days > 0 and held_days > 0:
-                        fraction = held_days / period_total_days
-                        coupon_payment = (annual_coupon_cash / 2.0) * fraction
-                        events_map.setdefault(pay_date, []).append(("coupon", coupon_payment, gilt.target_pot))
-        return events_map
-
-    def run_simulation(self) -> Tuple[pd.DataFrame, pd.DataFrame]:
+    def run_joint_simulation(self) -> Tuple[pd.DataFrame, pd.DataFrame]:
         start_date = date.today()
         try:
-            target_100_date = date(self.dob.year + 100, self.dob.month, self.dob.day)
+            end_date = date(self.p1.dob.year + 100, self.p1.dob.month, self.p1.dob.day)
         except ValueError:
-            target_100_date = date(self.dob.year + 100, 2, 28)
+            end_date = date(self.p1.dob.year + 100, 2, 28)
 
-        # Dynamic Annuity/DB pension start date
-        try:
-            annuity_start_date = date(self.dob.year + self.scenario.annuity_start_age, self.dob.month, self.dob.day)
-        except ValueError:
-            annuity_start_date = date(self.dob.year + self.scenario.annuity_start_age, 2, 28)
+        # Track P1 balances (Julian)
+        p1_sipp = self.p1.sipp.balance
+        p1_wp_taxable = self.p1.workplace_taxable.balance
+        p1_wp_taxfree = self.p1.workplace_tax_free.balance
+        p1_isa = self.p1.isa.balance
+        p1_other = self.p1.other_investment.balance
 
-        sipp = self.scenario.sipp.balance
-        wp_taxable = self.scenario.workplace_taxable.balance
-        wp_tax_free = self.scenario.workplace_tax_free.balance
-        isa = self.scenario.isa.balance
-        other = self.scenario.other_investment.balance
-        cumulative_deficit = 0.0
+        # Track P2 balances (Karen)
+        p2_sipp = self.p2.sipp.balance
+        p2_wp_taxable = self.p2.workplace_taxable.balance
+        p2_wp_taxfree = self.p2.workplace_tax_free.balance
+        p2_isa = self.p2.isa.balance
+        p2_other = self.p2.other_investment.balance
 
-        daily_records = []
         current_date = start_date
-        taxable_income_this_tax_year = 0.0
-        isa_credited_this_tax_year = 0.0
+        daily_records = []
+
+        p1_taxable_this_year = 0.0
+        p2_taxable_this_year = 0.0
         last_tax_year = self._get_tax_year(current_date)
-        annuity_purchased = False
-        
-        # Crash & Market Index Recovery tracking variables
-        crash_applied = False
-        in_market_recovery = False
-        market_index = 1.0
-        pre_crash_index_target = 1.0
-        crash_active_until = None
-        crash_capped_income = None
-        
-        lump_sums_applied = [False] * len(self.scenario.lump_sums)
 
-        gilt_events_map = self._build_gilt_events()
+        while current_date <= end_date:
+            p1_age = current_date.year - self.p1.dob.year - ((current_date.month, current_date.day) < (self.p1.dob.month, self.p1.dob.day))
+            p2_age = current_date.year - self.p2.dob.year - ((current_date.month, current_date.day) < (self.p2.dob.month, self.p2.dob.day))
 
-        # Calculate standard DB/Annuity Base Payout with optional Actuarial Reduction
-        base_annuity = self.scenario.annuity_annual
-        if self.scenario.apply_db_early_reduction and self.scenario.annuity_start_age < self.scenario.annuity_npa:
-            db_red_factor = calculate_early_retirement_reduction_factor(self.scenario.annuity_start_age, self.scenario.annuity_npa)
-            base_annuity *= db_red_factor
+            p1_retired = p1_age >= self.p1.ret_age
+            p2_retired = p2_age >= self.p2.ret_age
+            both_retired = p1_retired and p2_retired
 
-        if self.scenario.inflate_annuity_to_start and annuity_start_date > start_date:
-            years_to_start = (annuity_start_date - start_date).days / 365.25
-            base_annuity *= ((1.0 + self.scenario.inflation_rate) ** max(0.0, years_to_start))
-
-        # Dynamic Nuvos Accrual & Inflation Engine starting strictly from baseline date
-        nuvos_baseline = self.scenario.nuvos_annual if self.scenario.has_nuvos_pension else 0.0
-        nuvos_accumulated = nuvos_baseline
-        current_nuvos_salary = self.scenario.nuvos_salary
-
-        # Track Nuvos growth timeline from statement baseline date up to Target Retirement Age
-        nuvos_sim_date = self.scenario.nuvos_baseline_date
-        try:
-            ret_date_limit = date(self.dob.year + self.retirement_age, self.dob.month, self.dob.day)
-        except ValueError:
-            ret_date_limit = date(self.dob.year + self.retirement_age, 2, 28)
-
-        # Pre-simulate Nuvos growth from March 2025 baseline to today (start_date)
-        if self.scenario.has_nuvos_pension and nuvos_sim_date < start_date:
-            curr_sim = nuvos_sim_date + timedelta(days=1)
-            while curr_sim <= start_date:
-                if curr_sim.day == 1 and curr_sim.month == 4:
-                    nuvos_accumulated *= (1.0 + self.scenario.inflation_rate)
-                    if not self.scenario.nuvos_pause_enabled or curr_sim <= self.scenario.nuvos_pause_date:
-                        current_nuvos_salary *= (1.0 + self.scenario.inflation_rate)
-                        new_accrual = current_nuvos_salary * (self.scenario.nuvos_accrual_rate / 100.0)
-                        nuvos_accumulated += new_accrual
-                curr_sim += timedelta(days=1)
-
-        # Calculate finalized Nuvos payout at Target Retirement Age including Early Reduction Factor
-        nuvos_payout_at_retire = 0.0
-        nuvos_calculated_at_retire = False
-
-        while current_date <= target_100_date:
-            age = self._calculate_age(self.dob, current_date)
-            is_retired = age >= self.retirement_age
             current_tax_year = self._get_tax_year(current_date)
-
             if current_tax_year != last_tax_year:
-                taxable_income_this_tax_year = 0.0
-                isa_credited_this_tax_year = 0.0
+                p1_taxable_this_year = 0.0
+                p2_taxable_this_year = 0.0
                 last_tax_year = current_tax_year
 
-            # Ongoing Nuvos Active Accrual vs Inflation Revaluation Check (from start_date forward)
-            if self.scenario.has_nuvos_pension and current_date < ret_date_limit:
-                if current_date > start_date and current_date.day == 1 and current_date.month == 4:
-                    nuvos_accumulated *= (1.0 + self.scenario.inflation_rate)
-                    active_accrual_active = not self.scenario.nuvos_pause_enabled or (current_date <= self.scenario.nuvos_pause_date)
-                    if active_accrual_active:
-                        current_nuvos_salary *= (1.0 + self.scenario.inflation_rate)
-                        new_accrual = current_nuvos_salary * (self.scenario.nuvos_accrual_rate / 100.0)
-                        nuvos_accumulated += new_accrual
-
-            # Apply early retirement actuarial reduction factor to Nuvos pension at retirement age
-            if self.scenario.has_nuvos_pension and current_date >= ret_date_limit and not nuvos_calculated_at_retire:
-                unreduced_nuvos = nuvos_accumulated
-                if self.scenario.apply_nuvos_early_reduction and self.retirement_age < self.scenario.nuvos_npa:
-                    reduction_factor = calculate_early_retirement_reduction_factor(self.retirement_age, self.scenario.nuvos_npa)
-                    nuvos_payout_at_retire = unreduced_nuvos * reduction_factor
-                else:
-                    nuvos_payout_at_retire = unreduced_nuvos
-                nuvos_calculated_at_retire = True
-
-            # Standard Annuity Calculation
-            current_annual_annuity = 0.0
-            if current_date >= annuity_start_date and base_annuity > 0:
-                if self.scenario.annuity_type == "Flat Rate (Level)":
-                    current_annual_annuity = base_annuity
-                else:
-                    years_since_annuity = current_date.year - annuity_start_date.year - (
-                        (current_date.month, current_date.day) < (annuity_start_date.month, annuity_start_date.day)
-                    )
-                    current_annual_annuity = base_annuity * (
-                        (1.0 + self.scenario.inflation_rate) ** max(0, years_since_annuity)
-                    )
-
-            # Nuvos Annual Payout escalating post-retirement with CPI
-            current_annual_nuvos = 0.0
-            if self.scenario.has_nuvos_pension and current_date >= ret_date_limit:
-                years_since_nuvos_start = current_date.year - ret_date_limit.year - (
-                    (current_date.month, current_date.day) < (ret_date_limit.month, ret_date_limit.day)
-                )
-                current_annual_nuvos = nuvos_payout_at_retire * ((1.0 + self.scenario.inflation_rate) ** max(0, years_since_nuvos_start))
-
-            total_combined_annual_pension = current_annual_annuity + current_annual_nuvos
-
-            # Lump sum injections processing
-            for idx, ls in enumerate(self.scenario.lump_sums):
-                if not lump_sums_applied[idx] and ls.amount != 0 and current_date >= ls.injection_date:
-                    if ls.amount > 0:
-                        if ls.target_pot == "SIPP":
-                            sipp += ls.amount
-                        elif ls.target_pot == "Private Pension":
-                            wp_tax_free += ls.amount * 0.25
-                            wp_taxable += ls.amount * 0.75
-                        elif ls.target_pot == "S&S ISA":
-                            isa += ls.amount
-                        elif ls.target_pot == "Other Investment":
-                            other += ls.amount
-                    else:
-                        rem_withdrawal = abs(ls.amount)
-                        def draw_from_pot(current_bal, requested):
-                            possible = min(current_bal, requested)
-                            return current_bal - possible, requested - possible
-
-                        if ls.target_pot == "SIPP":
-                            sipp, rem_withdrawal = draw_from_pot(sipp, rem_withdrawal)
-                            if rem_withdrawal > 0:
-                                other, rem_withdrawal = draw_from_pot(other, rem_withdrawal)
-                            if rem_withdrawal > 0:
-                                total_wp = wp_taxable + wp_tax_free
-                                total_wp, rem_withdrawal = draw_from_pot(total_wp, rem_withdrawal)
-                                wp_taxable = total_wp * 0.75
-                                wp_tax_free = total_wp * 0.25
-                        elif ls.target_pot == "Other Investment":
-                            other, rem_withdrawal = draw_from_pot(other, rem_withdrawal)
-                            if rem_withdrawal > 0:
-                                sipp, rem_withdrawal = draw_from_pot(sipp, rem_withdrawal)
-                            if rem_withdrawal > 0:
-                                total_wp = wp_taxable + wp_tax_free
-                                total_wp, rem_withdrawal = draw_from_pot(total_wp, rem_withdrawal)
-                                wp_taxable = total_wp * 0.75
-                                wp_tax_free = total_wp * 0.25
-                        elif ls.target_pot == "Private Pension":
-                            total_wp = wp_taxable + wp_tax_free
-                            total_wp, rem_withdrawal = draw_from_pot(total_wp, rem_withdrawal)
-                            wp_taxable = total_wp * 0.75
-                            wp_tax_free = total_wp * 0.25
-                            if rem_withdrawal > 0:
-                                other, rem_withdrawal = draw_from_pot(other, rem_withdrawal)
-                            if rem_withdrawal > 0:
-                                sipp, rem_withdrawal = draw_from_pot(sipp, rem_withdrawal)
-                        elif ls.target_pot == "S&S ISA":
-                            isa, rem_withdrawal = draw_from_pot(isa, rem_withdrawal)
-                    lump_sums_applied[idx] = True
-
-            daily_gilt_income = 0.0
-            if current_date in gilt_events_map:
-                for ev_type, amt, target_pot in gilt_events_map[current_date]:
-                    if ev_type == "purchase":
-                        rem_cost = amt
-                        if target_pot == "SIPP":
-                            sipp = max(0.0, sipp - rem_cost)
-                        elif target_pot == "Private Pension":
-                            total_wp = wp_taxable + wp_tax_free
-                            total_wp = max(0.0, total_wp - rem_cost)
-                            wp_taxable = total_wp * 0.75
-                            wp_tax_free = total_wp * 0.25
-                        elif target_pot == "S&S ISA":
-                            isa = max(0.0, isa - rem_cost)
-                        elif target_pot == "Other Investment":
-                            other = max(0.0, other - rem_cost)
-                    elif ev_type in ("coupon", "maturity"):
-                        daily_gilt_income += amt
-                        if target_pot == "SIPP":
-                            sipp += amt
-                        elif target_pot == "Private Pension":
-                            wp_taxable += amt * 0.75
-                            wp_tax_free += amt * 0.25
-                        elif target_pot == "S&S ISA":
-                            isa += amt
-                        elif target_pot == "Other Investment":
-                            other += amt
-
-            # ------------------------------------------------------------------
-            # Market Crash Trigger & Market Recovery Tracking
-            # ------------------------------------------------------------------
-            if (
-                not crash_applied
-                and self.scenario.crash_pct > 0
-                and current_date >= self.scenario.crash_date
-            ):
-                pre_crash_index_target = market_index
-                drop_factor = 1.0 - (self.scenario.crash_pct / 100.0)
-                
-                sipp *= drop_factor
-                wp_taxable *= drop_factor
-                wp_tax_free *= drop_factor
-                isa *= drop_factor
-                market_index *= drop_factor
-                
-                crash_applied = True
-                in_market_recovery = True
-                
-                try:
-                    crash_active_until = date(
-                        self.scenario.crash_date.year + 2,
-                        self.scenario.crash_date.month,
-                        self.scenario.crash_date.day,
-                    )
-                except ValueError:
-                    crash_active_until = date(
-                        self.scenario.crash_date.year + 2, 2, 28
-                    )
-                if self.scenario.crash_pct > 5.0:
-                    years_to_crash = self.scenario.crash_date.year - start_date.year - (
-                        (self.scenario.crash_date.month, self.scenario.crash_date.day) < (start_date.month, start_date.day)
-                    )
-                    annual_sp_at_crash = self.scenario.state_pension_amount * (
-                        (1.0 + self.scenario.state_pension_growth) ** max(0, years_to_crash)
-                    )
-                    crash_capped_income = annual_sp_at_crash / 12.0
-
-            if current_date >= annuity_start_date and not annuity_purchased:
-                cost_rem = self.scenario.annuity_cost
-                if cost_rem > 0:
-                    draw_other = min(other, cost_rem)
-                    other -= draw_other
-                    cost_rem -= draw_other
-                    if cost_rem > 0:
-                        tot_pension = sipp + wp_taxable + wp_tax_free
-                        draw_pension = min(tot_pension, cost_rem)
-                        if draw_pension > 0 and tot_pension > 0:
-                            s_share = sipp / tot_pension
-                            wpt_share = wp_taxable / tot_pension
-                            wptf_share = wp_tax_free / tot_pension
-                            sipp -= draw_pension * s_share
-                            wp_taxable -= draw_pension * wpt_share
-                            wp_tax_free -= draw_pension * wptf_share
-                            cost_rem -= draw_pension
-                    if cost_rem > 0:
-                        draw_isa = min(isa, cost_rem)
-                        isa -= draw_isa
-                        cost_rem -= draw_isa
-                annuity_purchased = True
-
-            if not is_retired and current_date.day == 1:
-                sipp += self.scenario.sipp.monthly_contrib
-                wp_taxable += self.scenario.workplace_taxable.monthly_contrib
-                wp_tax_free += self.scenario.workplace_tax_free.monthly_contrib
-                isa += self.scenario.isa.monthly_contrib
-                other += self.scenario.other_investment.monthly_contrib
-
-            # ------------------------------------------------------------------
-            # Dynamic Pot Growth & Accelerated Rebound Return Multiplier
-            # ------------------------------------------------------------------
-            if in_market_recovery and market_index >= pre_crash_index_target:
-                in_market_recovery = False
-
-            return_mult = 2.0 if in_market_recovery else 1.0
-
-            effective_sipp_ret = self.scenario.sipp.annual_return * return_mult
-            effective_wp_ret = self.scenario.workplace_pension_return * return_mult
-            effective_isa_ret = self.scenario.isa.annual_return * return_mult
-
-            sipp *= 1.0 + self._get_daily_rate(effective_sipp_ret)
-            wp_taxable *= 1.0 + self._get_daily_rate(effective_wp_ret)
-            wp_tax_free *= 1.0 + self._get_daily_rate(effective_wp_ret)
-            isa *= 1.0 + self._get_daily_rate(effective_isa_ret)
-            
-            market_index *= 1.0 + self._get_daily_rate(effective_isa_ret)
-
-            other_growth = other * self._get_daily_rate(self.scenario.other_investment.annual_return)
-            other_tax_on_growth = other_growth * 0.18
-            other += (other_growth - other_tax_on_growth)
-
-            monthly_drawn_from_pots = 0.0
-            draw_sipp_amt = 0.0
-            draw_wp_taxable_amt = 0.0
-            draw_wp_taxfree_amt = 0.0
-            draw_isa_amt = 0.0
-            draw_other_amt = 0.0
-
-            state_pension_monthly = 0.0
-            combined_pension_monthly = 0.0
-            tax_paid = 0.0
-
-            years_since_start = current_date.year - start_date.year - (
-                (current_date.month, current_date.day) < (start_date.month, start_date.day)
-            )
-
-            in_crash_window = (
-                crash_applied
-                and crash_active_until is not None
-                and current_date < crash_active_until
-            )
-
-            if in_crash_window and self.scenario.crash_pct > 5.0 and crash_capped_income is not None:
-                inflated_monthly_income = crash_capped_income
-            else:
-                if age >= self.scenario.reduced_inc_age:
-                    base_target_income = self.scenario.reduced_monthly_inc
-                elif (
-                    self.scenario.increased_monthly_inc > 0
-                    and current_date >= self.scenario.increase_date
-                ):
-                    base_target_income = self.scenario.increased_monthly_inc
-                else:
-                    base_target_income = self.monthly_income
-
-                inflated_monthly_income = base_target_income * (
-                    (1.0 + self.scenario.inflation_rate) ** years_since_start
-                )
-
+            # Monthly pre-retirement contributions
             if current_date.day == 1:
-                current_desired_annual = inflated_monthly_income * 12.0
-                threshold_other = 2.0 * current_desired_annual
-                if other > threshold_other:
-                    excess_other = other - threshold_other
-                    isa_allowance_rem = max(0.0, self.ISA_ANNUAL_ALLOWANCE - isa_credited_this_tax_year)
-                    to_isa_from_other = min(excess_other, isa_allowance_rem)
-                    if to_isa_from_other > 0:
-                        other -= to_isa_from_other
-                        isa += to_isa_from_other
-                        isa_credited_this_tax_year += to_isa_from_other
+                if not p1_retired:
+                    p1_sipp += self.p1.sipp.monthly_contrib
+                    p1_wp_taxable += self.p1.workplace_taxable.monthly_contrib
+                    p1_wp_taxfree += self.p1.workplace_tax_free.monthly_contrib
+                    p1_isa += self.p1.isa.monthly_contrib
+                    p1_other += self.p1.other_investment.monthly_contrib
+                if not p2_retired:
+                    p2_sipp += self.p2.sipp.monthly_contrib
+                    p2_wp_taxable += self.p2.workplace_taxable.monthly_contrib
+                    p2_wp_taxfree += self.p2.workplace_tax_free.monthly_contrib
+                    p2_isa += self.p2.isa.monthly_contrib
+                    p2_other += self.p2.other_investment.monthly_contrib
 
-            if is_retired and current_date.day == 1:
-                if total_combined_annual_pension > 0:
-                    combined_pension_monthly = total_combined_annual_pension / 12.0
-                    taxable_income_this_tax_year += combined_pension_monthly
+            # Daily Compound Return Growth
+            p1_sipp *= (1.0 + self._get_daily_rate(self.p1.sipp.annual_return))
+            p1_wp_taxable *= (1.0 + self._get_daily_rate(self.p1.workplace_pension_return))
+            p1_wp_taxfree *= (1.0 + self._get_daily_rate(self.p1.workplace_pension_return))
+            p1_isa *= (1.0 + self._get_daily_rate(self.p1.isa.annual_return))
+            p1_other *= (1.0 + self._get_daily_rate(self.p1.other_investment.annual_return))
 
-                if (
-                    self.scenario.has_state_pension
-                    and age >= self.scenario.state_pension_age
-                ):
-                    inflated_state_pension_annual = self.scenario.state_pension_amount * (
-                        (1.0 + self.scenario.state_pension_growth) ** years_since_start
-                    )
-                    state_pension_monthly = inflated_state_pension_annual / 12.0
-                    taxable_income_this_tax_year += state_pension_monthly
+            p2_sipp *= (1.0 + self._get_daily_rate(self.p2.sipp.annual_return))
+            p2_wp_taxable *= (1.0 + self._get_daily_rate(self.p2.workplace_pension_return))
+            p2_wp_taxfree *= (1.0 + self._get_daily_rate(self.p2.workplace_pension_return))
+            p2_isa *= (1.0 + self._get_daily_rate(self.p2.isa.annual_return))
+            p2_other *= (1.0 + self._get_daily_rate(self.p2.other_investment.annual_return))
 
-                guaranteed_monthly_income = combined_pension_monthly + state_pension_monthly
+            # Monthly Drawdown logic executed on 1st of each month
+            if (p1_retired or p2_retired) and current_date.day == 1:
+                years_since_start = current_date.year - start_date.year
+                target_net_monthly = self.scenario.household_monthly_income * ((1.0 + self.scenario.inflation_rate) ** years_since_start)
 
-                if guaranteed_monthly_income > inflated_monthly_income:
-                    excess_income = guaranteed_monthly_income - inflated_monthly_income
-                    isa_allowance_rem = max(0.0, self.ISA_ANNUAL_ALLOWANCE - isa_credited_this_tax_year)
-                    to_isa = min(excess_income, isa_allowance_rem)
-                    to_other = excess_income - to_isa
-                    isa += to_isa
-                    other += to_other
-                    isa_credited_this_tax_year += to_isa
-                    needed_net = 0.0
-                else:
-                    needed_net = inflated_monthly_income - guaranteed_monthly_income
+                # Guaranteed DB/State Pension incomes
+                g_p1 = self._get_monthly_guaranteed(self.p1, p1_age, years_since_start)
+                g_p2 = self._get_monthly_guaranteed(self.p2, p2_age, years_since_start)
 
-                if in_crash_window:
-                    if needed_net > 0 and other > 0:
-                        draw = min(other, needed_net)
-                        other -= draw
-                        needed_net -= draw
-                        draw_other_amt += draw
-                        monthly_drawn_from_pots += draw
-                else:
-                    allowance_rem = max(
-                        0.0, self.PERSONAL_ALLOWANCE - taxable_income_this_tax_year
-                    )
-                    if allowance_rem > 0 and needed_net > 0:
-                        target = min(needed_net, allowance_rem)
-                        tot_taxable = sipp + wp_taxable
-                        draw = min(tot_taxable, target)
-                        if draw > 0:
-                            s_share = (sipp / tot_taxable) if tot_taxable > 0 else 0.0
-                            wp_share = (wp_taxable / tot_taxable) if tot_taxable > 0 else 0.0
-                            s_draw = draw * s_share
-                            wp_draw = draw * wp_share
-                            sipp -= s_draw
-                            wp_taxable -= wp_draw
-                            draw_sipp_amt += s_draw
-                            draw_wp_taxable_amt += wp_draw
-                            taxable_income_this_tax_year += draw
-                            needed_net -= draw
-                            monthly_drawn_from_pots += draw
+                p1_taxable_this_year += g_p1
+                p2_taxable_this_year += g_p2
 
-                    if needed_net > 0 and isa > 0:
-                        draw = min(isa, needed_net)
-                        isa -= draw
-                        needed_net -= draw
-                        draw_isa_amt += draw
-                        monthly_drawn_from_pots += draw
+                guaranteed_tot = g_p1 + g_p2
+                needed_net = max(0.0, target_net_monthly - guaranteed_tot)
 
-                    if needed_net > 0 and wp_tax_free > 0:
-                        draw = min(wp_tax_free, needed_net)
-                        wp_tax_free -= draw
-                        needed_net -= draw
-                        draw_wp_taxfree_amt += draw
-                        monthly_drawn_from_pots += draw
-
-                    tot_taxable = sipp + wp_taxable
-                    if needed_net > 0 and tot_taxable > 0:
-                        gross_needed = needed_net / (1.0 - self.BASIC_TAX_RATE)
-                        gross_draw = min(tot_taxable, gross_needed)
-                        if gross_draw > 0:
-                            s_share = (sipp / tot_taxable) if tot_taxable > 0 else 0.0
-                            wp_share = (wp_taxable / tot_taxable) if tot_taxable > 0 else 0.0
-                            s_draw = gross_draw * s_share
-                            wp_draw = gross_draw * wp_share
-                            sipp -= s_draw
-                            wp_taxable -= wp_draw
-                            draw_sipp_amt += s_draw
-                            draw_wp_taxable_amt += wp_draw
-                            net_rec = gross_draw * (1.0 - self.BASIC_TAX_RATE)
-                            tax = gross_draw * self.BASIC_TAX_RATE
-                            taxable_income_this_tax_year += gross_draw
-                            needed_net -= net_rec
-                            monthly_drawn_from_pots += net_rec
-                            tax_paid += tax
-
-                    if needed_net > 0 and other > 0:
-                        draw = min(other, needed_net)
-                        other -= draw
-                        needed_net -= draw
-                        draw_other_amt += draw
-                        monthly_drawn_from_pots += draw
-
+                # Tax-Optimized Dual Drawdowns
                 if needed_net > 0:
-                    cumulative_deficit += needed_net
+                    # Priority 1: Fill Personal Allowances (£12,570) tax-free for active retirees
+                    allow_p1_rem = max(0.0, self.PERSONAL_ALLOWANCE - p1_taxable_this_year)
+                    allow_p2_rem = max(0.0, self.PERSONAL_ALLOWANCE - p2_taxable_this_year)
 
-            private_pension_val = wp_taxable + wp_tax_free
-            total_portfolio = (sipp + wp_taxable + wp_tax_free + isa + other) - cumulative_deficit
-            total_monthly_income = monthly_drawn_from_pots + state_pension_monthly + combined_pension_monthly
-            
-            total_daily_investment_income = daily_gilt_income
+                    if allow_p1_rem > 0 and p1_retired:
+                        draw_req = min(needed_net / 2.0 if both_retired else needed_net, allow_p1_rem)
+                        p1_sipp, p1_wp_taxable, p1_taxable_this_year, needed_net = self._draw_taxable_pot(
+                            p1_sipp, p1_wp_taxable, draw_req, p1_taxable_this_year, needed_net
+                        )
+
+                    if allow_p2_rem > 0 and p2_retired:
+                        draw_req = min(needed_net / 2.0 if both_retired else needed_net, allow_p2_rem)
+                        p2_sipp, p2_wp_taxable, p2_taxable_this_year, needed_net = self._draw_taxable_pot(
+                            p2_sipp, p2_wp_taxable, draw_req, p2_taxable_this_year, needed_net
+                        )
+
+                    # Priority 2: Simultaneous draw down from ISAs
+                    if needed_net > 0:
+                        if both_retired:
+                            draw_p1 = min(p1_isa, needed_net / 2.0)
+                            draw_p2 = min(p2_isa, needed_net - draw_p1)
+                            p1_isa -= draw_p1
+                            p2_isa -= draw_p2
+                            needed_net -= (draw_p1 + draw_p2)
+                        elif p1_retired and p1_isa > 0:
+                            draw = min(p1_isa, needed_net)
+                            p1_isa -= draw
+                            needed_net -= draw
+                        elif p2_retired and p2_isa > 0:
+                            draw = min(p2_isa, needed_net)
+                            p2_isa -= draw
+                            needed_net -= draw
+
+            p1_tot = p1_sipp + p1_wp_taxable + p1_wp_taxfree + p1_isa + p1_other
+            p2_tot = p2_sipp + p2_wp_taxable + p2_wp_taxfree + p2_isa + p2_other
+            total_portfolio = p1_tot + p2_tot
 
             daily_records.append({
                 "date": current_date,
-                "tax_year": current_tax_year,
-                "raw_month": current_date.strftime("%Y-%m"),
-                "age": age,
-                "is_retired": is_retired,
-                "desired_monthly_income": int(round(inflated_monthly_income)),
-                "desired_annual_income": int(round(inflated_monthly_income * 12.0)),
-                "sipp": int(round(sipp)),
-                "private_pension": int(round(private_pension_val)),
-                "workplace_tax_free": int(round(wp_tax_free)),
-                "workplace_taxable": int(round(wp_taxable)),
-                "isa": int(round(isa)),
-                "other_investment": int(round(other)),
-                "investment_income": int(round(total_daily_investment_income)),
+                "p1_age": p1_age,
+                "p2_age": p2_age,
+                "dual_age_label": f"Julian Age {p1_age} / Karen Age {p2_age}",
                 "total_portfolio": int(round(total_portfolio)),
-                "annuity_income": int(round(total_combined_annual_pension if is_retired else 0.0)),
-                "state_pension_income": int(round(state_pension_monthly)),
-                "pot_income_drawn": int(round(monthly_drawn_from_pots)),
-                "draw_sipp": draw_sipp_amt,
-                "draw_wp_taxable": draw_wp_taxable_amt,
-                "draw_wp_taxfree": draw_wp_taxfree_amt,
-                "draw_isa": draw_isa_amt,
-                "draw_other": draw_other_amt,
-                "monthly_net_income": int(round(total_monthly_income)),
-                "tax_paid": int(round(tax_paid)),
+                "p1_portfolio": int(round(p1_tot)),
+                "p2_portfolio": int(round(p2_tot)),
             })
             current_date += timedelta(days=1)
 
         df = pd.DataFrame(daily_records)
-        monthly_df = (
-            df.groupby("raw_month")
-            .agg({
-                "date": "last", "age": "last", "is_retired": "last",
-                "desired_monthly_income": "last", "desired_annual_income": "last",
-                "sipp": "last", "private_pension": "last", "isa": "last",
-                "other_investment": "last", "investment_income": "sum",
-                "total_portfolio": "last", "annuity_income": "last",
-                "state_pension_income": "sum", "pot_income_drawn": "sum",
-                "draw_sipp": "sum", "draw_wp_taxable": "sum", "draw_wp_taxfree": "sum",
-                "draw_isa": "sum", "draw_other": "sum",
-                "monthly_net_income": "sum", "tax_paid": "sum",
-            })
-            .reset_index()
-        )
-        monthly_df["year_month"] = monthly_df.apply(lambda r: f"{r['raw_month']} ({r['age']})", axis=1)
+        annual_df = df.groupby(["p1_age", "p2_age"]).agg({
+            "dual_age_label": "last",
+            "total_portfolio": "last",
+            "p1_portfolio": "last",
+            "p2_portfolio": "last",
+        }).reset_index()
 
-        age_year_df = (
-            df.groupby("age")
-            .agg({
-                "date": "last", "is_retired": "last",
-                "desired_monthly_income": "last", "desired_annual_income": "last",
-                "sipp": "last", "private_pension": "last", "isa": "last",
-                "other_investment": "last", "investment_income": "sum",
-                "total_portfolio": "last", "annuity_income": "last",
-                "state_pension_income": "sum", "pot_income_drawn": "sum",
-                "draw_sipp": "sum", "draw_wp_taxable": "sum", "draw_wp_taxfree": "sum",
-                "draw_isa": "sum", "draw_other": "sum",
-                "monthly_net_income": "sum", "tax_paid": "sum",
-            })
-            .reset_index()
-        )
-        age_year_df["age_year_label"] = age_year_df["age"].apply(lambda a: f"Age {a}")
-        age_year_df["monthly_net_income"] = (age_year_df["monthly_net_income"] / 12.0).round(0)
+        return df, annual_df
 
-        num_cols = [
-            "desired_monthly_income", "desired_annual_income", "sipp",
-            "private_pension", "isa", "other_investment", "investment_income",
-            "total_portfolio", "annuity_income", "state_pension_income",
-            "pot_income_drawn", "draw_sipp", "draw_wp_taxable", "draw_wp_taxfree",
-            "draw_isa", "draw_other", "monthly_net_income", "tax_paid",
-        ]
-        monthly_df[num_cols] = monthly_df[num_cols].round(0).astype(int)
-        age_year_df[num_cols] = age_year_df[num_cols].round(0).astype(int)
+    @staticmethod
+    def _get_monthly_guaranteed(p: PersonProfile, age: int, years_since_start: int) -> float:
+        monthly = 0.0
+        if p.has_state_pension and age >= p.state_pension_age:
+            annual_sp = p.state_pension_amount * ((1.0 + p.state_pension_growth) ** years_since_start)
+            monthly += annual_sp / 12.0
+        if p.has_nuvos_pension and age >= p.ret_age:
+            monthly += (p.nuvos_annual * ((1.0 + 0.03) ** years_since_start)) / 12.0
+        return monthly
 
-        return monthly_df, age_year_df
-
-
-def find_minimum_retirement_age(dob: date, monthly_income: float, base_scenario: Scenario) -> int:
-    current_age = (
-        date.today().year
-        - dob.year
-        - ((date.today().month, date.today().day) < (dob.month, dob.day))
-    )
-    min_test_age = max(50, current_age)
-    
-    for test_age in range(min_test_age, 86):
-        test_engine = RetirementEngine(
-            dob=dob,
-            retirement_age=test_age,
-            monthly_income=monthly_income,
-            scenario=base_scenario
-        )
-        _, t_df = test_engine.run_simulation()
-        ret_df = t_df[t_df["is_retired"]]
-        depleted = ret_df[ret_df["total_portfolio"] <= 0]
-        if depleted.empty:
-            return test_age
-    return None
+    @staticmethod
+    def _draw_taxable_pot(sipp: float, wp_taxable: float, requested: float, tax_year_acc: float, needed_net: float):
+        tot = sipp + wp_taxable
+        if tot <= 0 or requested <= 0:
+            return sipp, wp_taxable, tax_year_acc, needed_net
+        draw = min(tot, requested)
+        s_share = sipp / tot
+        wp_share = wp_taxable / tot
+        sipp -= draw * s_share
+        wp_taxable -= draw * wp_share
+        return sipp, wp_taxable, tax_year_acc + draw, needed_net - draw
 
 
 # ----------------------------------------------------------------------
-# 4. Streamlit Sidebar: Profile Management & Inputs Form
+# 3. Streamlit Sidebar & Profile Setup
 # ----------------------------------------------------------------------
 
-with st.sidebar.expander("🔗 Live Trading 212 Sync", expanded=False):
-    st.caption("Sync live portfolio balance from Trading 212.")
-    try:
-        t212_api_key = st.secrets.get("t212_api_key") or st.secrets["trading212"]["api_key"]
-        is_live = True
-        try:
-            is_live = st.secrets["trading212"].get("is_live", True)
-        except Exception:
-            pass
-        
-        if st.button("Sync T212 Portfolio Balance"):
-            with st.spinner("Fetching data from Trading 212..."):
-                headers = {"Authorization": t212_api_key}
-                base_url = "https://live.trading212.com/api/v0" if is_live else "https://demo.trading212.com/api/v0"
-                
-                cash_resp = requests.get(f"{base_url}/equity/account/cash", headers=headers)
-                pos_resp = requests.get(f"{base_url}/equity/portfolio", headers=headers)
-                
-                if cash_resp.status_code == 200 and pos_resp.status_code == 200:
-                    cash_data = cash_resp.json()
-                    positions_data = pos_resp.json()
-                    
-                    free_cash = cash_data.get("free", 0.0)
-                    invested_val = sum([p.get("ppc", 0) * p.get("quantity", 0) for p in positions_data])
-                    total_t212_val = invested_val + free_cash
-                    
-                    st.session_state['t212_synced_value'] = total_t212_val
-                    st.success(f"Synced! Total: £{total_t212_val:,.2f}")
-                else:
-                    st.error(f"API Error: Cash Status {cash_resp.status_code}, Portfolio Status {pos_resp.status_code}")
-    except Exception as e:
-        st.warning(f"T212 credentials not configured correctly in secrets: {e}")
+st.sidebar.header("⚙️ Joint Scenario Setup")
 
-    if 't212_synced_value' in st.session_state:
-        sync_val = st.session_state['t212_synced_value']
-        st.metric("Live T212 Value", f"£{sync_val:,.2f}")
-        if st.button("Apply to Active Profile (ISA)"):
-            st.session_state.scenarios[selected_profile]["isa_bal"] = float(sync_val)
-            save_scenarios()
-            st.success("Applied synced value to ISA balance and saved!")
-            st.rerun()
-
-st.sidebar.header("📁 Profile & Scenario Manager")
-
-scenario_list = list(st.session_state.scenarios.keys())
-if st.session_state.active_scenario_name not in scenario_list:
-    st.session_state.active_scenario_name = scenario_list[0]
-
-selected_profile = st.sidebar.selectbox(
-    "Select Active Profile:",
-    options=scenario_list,
-    index=scenario_list.index(st.session_state.active_scenario_name),
-)
-
-st.session_state.active_scenario_name = selected_profile
-
-with st.sidebar.expander("➕ Add New Profile / Copy Current"):
-    new_profile_name = st.text_input("New Profile Name:", placeholder="e.g. Early Retirement")
-    if st.button("Create Profile"):
-        if new_profile_name and new_profile_name not in st.session_state.scenarios:
-            st.session_state.scenarios[new_profile_name] = st.session_state.scenarios[selected_profile].copy()
-            st.session_state.active_scenario_name = new_profile_name
-            save_scenarios()
-            st.success(f"Profile '{new_profile_name}' created and saved!")
-            st.rerun()
-        elif new_profile_name in st.session_state.scenarios:
-            st.warning("Profile name already exists.")
-
-if selected_profile not in DEFAULT_PROFILES:
-    if st.sidebar.button(f"🗑️ Delete Profile '{selected_profile}'", use_container_width=True):
-        del st.session_state.scenarios[selected_profile]
-        save_scenarios()
-        st.session_state.active_scenario_name = list(st.session_state.scenarios.keys())[0]
-        st.toast(f"Deleted profile '{selected_profile}'", icon="🗑")
-        st.rerun()
-else:
-    st.sidebar.caption("🔒 Default profile (cannot be deleted)")
-
-curr_data = st.session_state.scenarios[selected_profile]
+household_income = st.sidebar.number_input("Desired Monthly Household Income (£)", min_value=500.0, value=3500.0, step=100.0)
 
 st.sidebar.markdown("---")
+st.sidebar.subheader("👤 Julian Setup")
+p1_ret_age = st.sidebar.number_input("Julian Target Retirement Age", min_value=50, max_value=75, value=62)
+p1_sipp_bal = st.sidebar.number_input("Julian SIPP (£)", value=52500.0, step=1000.0)
+p1_wp_bal = st.sidebar.number_input("Julian Workplace Pension (£)", value=250000.0, step=5000.0)
+p1_isa_bal = st.sidebar.number_input("Julian S&S ISA (£)", value=105000.0, step=5000.0)
 
-with st.sidebar.form(key=f"scenario_form_{selected_profile}"):
-    st.header(f"⚙️ Edit '{selected_profile}'")
+st.sidebar.markdown("---")
+st.sidebar.subheader("👤 Karen Setup")
+p2_ret_age = st.sidebar.number_input("Karen Target Retirement Age", min_value=50, max_value=75, value=57)
+p2_nuvos_annual = st.sidebar.number_input("Karen Nuvos Annual Pension (£)", value=15929.31, step=500.0)
+p2_isa_bal = st.sidebar.number_input("Karen S&S ISA (£)", value=10000.0, step=1000.0)
 
-    submit_top = st.form_submit_button(
-        label="🔄 Recalculate Forecast", use_container_width=True, key="recalc_top"
-    )
+# Instantiate Profiles
+julian_profile = PersonProfile(
+    name="Julian",
+    dob=date(1969, 12, 1),
+    ret_age=int(p1_ret_age),
+    sipp=PotConfig(balance=p1_sipp_bal, annual_return=0.07, monthly_contrib=500.0),
+    workplace_pension_total=p1_wp_bal,
+    workplace_pension_return=0.07,
+    workplace_pension_contrib=700.0,
+    isa=PotConfig(balance=p1_isa_bal, annual_return=0.07, monthly_contrib=0.0),
+    other_investment=PotConfig(balance=57000.0, annual_return=0.03, monthly_contrib=0.0),
+    has_state_pension=True,
+    state_pension_age=67,
+    state_pension_amount=12548.0,
+)
 
-    with st.expander("👤 Core Profile & Income Goals", expanded=True):
-        dob = st.date_input(
-            "Date of Birth",
-            value=curr_data["dob"],
-            min_value=date(1920, 1, 1),
-            max_value=date.today(),
-            format="DD/MM/YYYY",
-        )
-        ret_age = st.number_input(
-            "Target Retirement Age", min_value=50, max_value=85, value=int(curr_data["ret_age"])
-        )
-        monthly_inc = st.number_input(
-            "Desired Monthly Income (£)",
-            min_value=100.0,
-            value=float(curr_data["monthly_inc"]),
-            step=100.0,
-        )
-        increased_monthly_inc = st.number_input(
-            "Increase Income To (£)",
-            min_value=0.0,
-            value=float(curr_data.get("increased_monthly_inc", 0.0)),
-            step=100.0,
-            help="Set above £0 to step up monthly income from Increase Date onwards.",
-        )
-        increase_date = st.date_input(
-            "Increase Date",
-            value=curr_data.get("increase_date", get_next_tax_year_start()),
-            min_value=date(2020, 1, 1),
-            max_value=date(2070, 12, 31),
-            format="DD/MM/YYYY",
-        )
-        default_reduced_inc = curr_data.get("reduced_monthly_inc", curr_data["monthly_inc"])
-        reduced_monthly_inc = st.number_input(
-            "Reduce Income To (£)",
-            min_value=0.0,
-            value=float(default_reduced_inc),
-            step=50.0,
-            help="Defaults to matching Desired Monthly Income unless explicitly changed.",
-        )
-        reduced_inc_age = st.number_input(
-            "Reduced Income Age",
-            min_value=50,
-            max_value=100,
-            value=int(curr_data.get("reduced_inc_age", 80)),
-        )
-        inflation_rate = st.slider(
-            "Annual Inflation Rate (%)",
-            min_value=0.0,
-            max_value=10.0,
-            value=float(curr_data.get("inflation_rate", 3.0)),
-            step=0.1,
-        )
+karen_profile = PersonProfile(
+    name="Karen",
+    dob=date(1980, 10, 16),
+    ret_age=int(p2_ret_age),
+    sipp=PotConfig(balance=0.0, annual_return=0.07, monthly_contrib=0.0),
+    workplace_pension_total=0.0,
+    workplace_pension_return=0.07,
+    workplace_pension_contrib=0.0,
+    isa=PotConfig(balance=p2_isa_bal, annual_return=0.07, monthly_contrib=0.0),
+    other_investment=PotConfig(balance=0.0, annual_return=0.03, monthly_contrib=0.0),
+    has_state_pension=True,
+    state_pension_age=67,
+    state_pension_amount=12548.0,
+    has_nuvos_pension=True,
+    nuvos_annual=p2_nuvos_annual,
+)
 
-    with st.expander("💵 Lump Sum Injections / Withdrawals (Up to 3)", expanded=False):
-        pot_options = ["S&S ISA", "SIPP", "Private Pension", "Other Investment"]
+joint_scenario = JointScenario(
+    name="Base Joint Scenario",
+    p1=julian_profile,
+    p2=karen_profile,
+    household_monthly_income=household_income,
+)
 
-        st.markdown("##### Lump Sum 1")
-        ls1_amt = st.number_input("Lump Sum 1 Amount (£)", min_value=-1000000.0, value=float(curr_data.get("lump_sum_1_amt", 0.0)), step=1000.0, help="Enter a negative amount to simulate a withdrawal.")
-        ls1_date = st.date_input("Lump Sum 1 Date", value=curr_data.get("lump_sum_1_date", get_next_tax_year_start()), min_value=date(1980, 1, 1), format="DD/MM/YYYY")
-        ls1_pot = st.selectbox("Lump Sum 1 Target Pot", options=pot_options, index=pot_options.index("Private Pension" if curr_data.get("lump_sum_1_pot") == "Workplace Pension" else curr_data.get("lump_sum_1_pot", "S&S ISA")), key="ls1_pot_sel")
-
-        st.markdown("##### Lump Sum 2")
-        ls2_amt = st.number_input("Lump Sum 2 Amount (£)", min_value=-1000000.0, value=float(curr_data.get("lump_sum_2_amt", 0.0)), step=1000.0, help="Enter a negative amount to simulate a withdrawal.")
-        ls2_date = st.date_input("Lump Sum 2 Date", value=curr_data.get("lump_sum_2_date", get_next_tax_year_start()), min_value=date(1980, 1, 1), format="DD/MM/YYYY")
-        ls2_pot = st.selectbox("Lump Sum 2 Target Pot", options=pot_options, index=pot_options.index("Private Pension" if curr_data.get("lump_sum_2_pot") == "Workplace Pension" else curr_data.get("lump_sum_2_pot", "S&S ISA")), key="ls2_pot_sel")
-
-        st.markdown("##### Lump Sum 3")
-        ls3_amt = st.number_input("Lump Sum 3 Amount (£)", min_value=-1000000.0, value=float(curr_data.get("lump_sum_3_amt", 0.0)), step=1000.0, help="Enter a negative amount to simulate a withdrawal.")
-        ls3_date = st.date_input("Lump Sum 3 Date", value=curr_data.get("lump_sum_3_date", get_next_tax_year_start()), min_value=date(1980, 1, 1), format="DD/MM/YYYY")
-        ls3_pot = st.selectbox("Lump Sum 3 Target Pot", options=pot_options, index=pot_options.index("Private Pension" if curr_data.get("lump_sum_3_pot") == "Workplace Pension" else curr_data.get("lump_sum_3_pot", "S&S ISA")), key="ls3_pot_sel")
-
-    with st.expander("🏛️ Gilts & Bonds (Up to 5)", expanded=False):
-        max_gilt_maturity = date(date.today().year + 50, 12, 31)
-
-        st.markdown("##### Gilt / Bond 1")
-        g1_amt = st.number_input("Gilt 1 Nominal Amount (£)", min_value=0.0, value=float(curr_data.get("gilt_1_amt", 0.0)), step=1000.0, key="g1_amt_input")
-        g1_price = st.number_input("Gilt 1 Purchase Price (%)", min_value=1.0, max_value=200.0, value=float(curr_data.get("gilt_1_price", 100.0)), step=0.5, key="g1_price_input")
-        g1_p_date = st.date_input("Gilt 1 Purchase Date", value=curr_data.get("gilt_1_p_date", get_next_tax_year_start()), min_value=date.today(), max_value=max_gilt_maturity, format="DD/MM/YYYY", key="g1_p_date_input")
-        g1_m_date = st.date_input("Gilt 1 Maturity Date", value=curr_data.get("gilt_1_m_date", get_next_tax_year_start()), min_value=date.today(), max_value=max_gilt_maturity, format="DD/MM/YYYY", key="g1_m_date_input")
-        g1_pot = st.selectbox("Gilt 1 Source/Target Pot", options=pot_options, index=pot_options.index(curr_data.get("gilt_1_pot", "S&S ISA")) if curr_data.get("gilt_1_pot", "S&S ISA") in pot_options else 0, key="g1_pot_sel")
-        g1_coupon_pct = st.number_input("Gilt 1 Annual Coupon / Interest (%)", min_value=0.0, max_value=30.0, value=float(curr_data.get("gilt_1_coupon_pct", 0.0)), step=0.1, key="g1_coupon_input")
-
-        st.markdown("##### Gilt / Bond 2")
-        g2_amt = st.number_input("Gilt 2 Nominal Amount (£)", min_value=0.0, value=float(curr_data.get("gilt_2_amt", 0.0)), step=1000.0, key="g2_amt_input")
-        g2_price = st.number_input("Gilt 2 Purchase Price (%)", min_value=1.0, max_value=200.0, value=float(curr_data.get("gilt_2_price", 100.0)), step=0.5, key="g2_price_input")
-        g2_p_date = st.date_input("Gilt 2 Purchase Date", value=curr_data.get("gilt_2_p_date", get_next_tax_year_start()), min_value=date.today(), max_value=max_gilt_maturity, format="DD/MM/YYYY", key="g2_p_date_input")
-        g2_m_date = st.date_input("Gilt 2 Maturity Date", value=curr_data.get("gilt_2_m_date", get_next_tax_year_start()), min_value=date.today(), max_value=max_gilt_maturity, format="DD/MM/YYYY", key="g2_m_date_input")
-        g2_pot = st.selectbox("Gilt 2 Source/Target Pot", options=pot_options, index=pot_options.index(curr_data.get("gilt_2_pot", "S&S ISA")) if curr_data.get("gilt_2_pot", "S&S ISA") in pot_options else 0, key="g2_pot_sel")
-        g2_coupon_pct = st.number_input("Gilt 2 Annual Coupon / Interest (%)", min_value=0.0, max_value=30.0, value=float(curr_data.get("gilt_2_coupon_pct", 0.0)), step=0.1, key="g2_coupon_input")
-
-        st.markdown("##### Gilt / Bond 3")
-        g3_amt = st.number_input("Gilt 3 Nominal Amount (£)", min_value=0.0, value=float(curr_data.get("gilt_3_amt", 0.0)), step=1000.0, key="g3_amt_input")
-        g3_price = st.number_input("Gilt 3 Purchase Price (%)", min_value=1.0, max_value=200.0, value=float(curr_data.get("gilt_3_price", 100.0)), step=0.5, key="g3_price_input")
-        g3_p_date = st.date_input("Gilt 3 Purchase Date", value=curr_data.get("gilt_3_p_date", get_next_tax_year_start()), min_value=date.today(), max_value=max_gilt_maturity, format="DD/MM/YYYY", key="g3_p_date_input")
-        g3_m_date = st.date_input("Gilt 3 Maturity Date", value=curr_data.get("gilt_3_m_date", get_next_tax_year_start()), min_value=date.today(), max_value=max_gilt_maturity, format="DD/MM/YYYY", key="g3_m_date_input")
-        g3_pot = st.selectbox("Gilt 3 Source/Target Pot", options=pot_options, index=pot_options.index(curr_data.get("gilt_3_pot", "S&S ISA")) if curr_data.get("gilt_3_pot", "S&S ISA") in pot_options else 0, key="g3_pot_sel")
-        g3_coupon_pct = st.number_input("Gilt 3 Annual Coupon / Interest (%)", min_value=0.0, max_value=30.0, value=float(curr_data.get("gilt_3_coupon_pct", 0.0)), step=0.1, key="g3_coupon_input")
-
-        st.markdown("##### Gilt / Bond 4")
-        g4_amt = st.number_input("Gilt 4 Nominal Amount (£)", min_value=0.0, value=float(curr_data.get("gilt_4_amt", 0.0)), step=1000.0, key="g4_amt_input")
-        g4_price = st.number_input("Gilt 4 Purchase Price (%)", min_value=1.0, max_value=200.0, value=float(curr_data.get("gilt_4_price", 100.0)), step=0.5, key="g4_price_input")
-        g4_p_date = st.date_input("Gilt 4 Purchase Date", value=curr_data.get("gilt_4_p_date", get_next_tax_year_start()), min_value=date.today(), max_value=max_gilt_maturity, format="DD/MM/YYYY", key="g4_p_date_input")
-        g4_m_date = st.date_input("Gilt 4 Maturity Date", value=curr_data.get("gilt_4_m_date", get_next_tax_year_start()), min_value=date.today(), max_value=max_gilt_maturity, format="DD/MM/YYYY", key="g4_m_date_input")
-        g4_pot = st.selectbox("Gilt 4 Source/Target Pot", options=pot_options, index=pot_options.index(curr_data.get("gilt_4_pot", "S&S ISA")) if curr_data.get("gilt_4_pot", "S&S ISA") in pot_options else 0, key="g4_pot_sel")
-        g4_coupon_pct = st.number_input("Gilt 4 Annual Coupon / Interest (%)", min_value=0.0, max_value=30.0, value=float(curr_data.get("gilt_4_coupon_pct", 0.0)), step=0.1, key="g4_coupon_input")
-
-        st.markdown("##### Gilt / Bond 5")
-        g5_amt = st.number_input("Gilt 5 Nominal Amount (£)", min_value=0.0, value=float(curr_data.get("gilt_5_amt", 0.0)), step=1000.0, key="g5_amt_input")
-        g5_price = st.number_input("Gilt 5 Purchase Price (%)", min_value=1.0, max_value=200.0, value=float(curr_data.get("gilt_5_price", 100.0)), step=0.5, key="g5_price_input")
-        g5_p_date = st.date_input("Gilt 5 Purchase Date", value=curr_data.get("gilt_5_p_date", get_next_tax_year_start()), min_value=date.today(), max_value=max_gilt_maturity, format="DD/MM/YYYY", key="g5_p_date_input")
-        g5_m_date = st.date_input("Gilt 5 Maturity Date", value=curr_data.get("gilt_5_m_date", get_next_tax_year_start()), min_value=date.today(), max_value=max_gilt_maturity, format="DD/MM/YYYY", key="g5_m_date_input")
-        g5_pot = st.selectbox("Gilt 5 Source/Target Pot", options=pot_options, index=pot_options.index(curr_data.get("gilt_5_pot", "S&S ISA")) if curr_data.get("gilt_5_pot", "S&S ISA") in pot_options else 0, key="g5_pot_sel")
-        g5_coupon_pct = st.number_input("Gilt 5 Annual Coupon / Interest (%)", min_value=0.0, max_value=30.0, value=float(curr_data.get("gilt_5_coupon_pct", 0.0)), step=0.1, key="g5_coupon_input")
-
-    try:
-        max_crash_date = date(dob.year + 100, dob.month, dob.day)
-    except ValueError:
-        max_crash_date = date(dob.year + 100, 2, 28)
-
-    with st.expander("📉 Market Stress Testing", expanded=False):
-        crash_pct = st.slider(
-            "Market Crash (%)",
-            min_value=0.0,
-            max_value=75.0,
-            value=float(curr_data.get("crash_pct", 0.0)),
-            step=1.0,
-        )
-        crash_date = st.date_input(
-            "Crash Date",
-            value=curr_data.get("crash_date", get_next_tax_year_start()),
-            min_value=date.today(),
-            max_value=max_crash_date,
-            format="DD/MM/YYYY",
-        )
-
-    with st.expander("📜 Pension Annuity / Defined Benefit (e.g. GMPF)", expanded=False):
-        annuity_annual = st.number_input("Annual Pension / Annuity Baseline (£)", min_value=0.0, value=float(curr_data.get("annuity_annual", 0.0)), step=100.0, help="Unreduced baseline annual pension value (e.g. £2,989.38 for GMPF).")
-        annuity_cost = st.number_input("Cost of Annuity (£)", min_value=0.0, value=float(curr_data.get("annuity_cost", 0.0)), step=5000.0, help="Leave at £0 for Defined Benefit / Final Salary pensions.")
-        annuity_start_age = st.number_input(
-            "Annuity / DB Pension Start Age",
-            min_value=50,
-            max_value=85,
-            value=int(curr_data.get("annuity_start_age", ret_age)),
-            step=1,
-            help="Age when payment starts. Defaults to Target Retirement Age.",
-        )
-        annuity_npa = st.number_input("Normal Pension Age (NPA)", min_value=55, max_value=75, value=int(curr_data.get("annuity_npa", 65)), step=1, help="Full unreduced pension age (typically 65).")
-        apply_db_early_reduction = st.checkbox("Apply Actuarial Early Retirement Reduction", value=curr_data.get("apply_db_early_reduction", True), help="Automatically applies early retirement reduction factors if taken before NPA.")
-        
-        annuity_types_list = ["Inflation-Linked (RPI/CPI)", "Flat Rate (Level)"]
-        saved_annuity_type = curr_data.get("annuity_type", "Inflation-Linked (RPI/CPI)")
-        annuity_type_idx = annuity_types_list.index(saved_annuity_type) if saved_annuity_type in annuity_types_list else 0
-        annuity_type = st.radio(
-            "Annuity Payout Type",
-            options=annuity_types_list,
-            index=annuity_type_idx,
-            help="Choose whether payments increase annually with inflation or remain level (flat rate)."
-        )
-        inflate_annuity_to_start = st.checkbox(
-            "Inflate Pension/Annuity to Start Age",
-            value=curr_data.get("inflate_annuity_to_start", True),
-            help="Compounding CPI inflation on baseline from today up to pension start age.",
-        )
-
-        st.markdown("---")
-        st.markdown("##### Karen's Nuvos Pension (Research Councils)")
-        has_nuvos_pension = st.checkbox("Include Karen's Nuvos Pension", value=curr_data.get("has_nuvos_pension", True))
-        nuvos_annual = st.number_input("Nuvos Accrued Baseline Pension (£)", min_value=0.0, value=float(curr_data.get("nuvos_annual", 15929.31)), step=500.0, help="Baseline accrued pension as recorded on statement.")
-        nuvos_baseline_date = st.date_input("Statement Baseline Date", value=curr_data.get("nuvos_baseline_date", date(2025, 3, 31)), min_value=date(2010, 1, 1), format="DD/MM/YYYY", help="Exact date of statement baseline (e.g. 31/03/2025).")
-        nuvos_npa = st.number_input("Nuvos Normal Pension Age (NPA)", min_value=55, max_value=75, value=int(curr_data.get("nuvos_npa", 65)), step=1, help="Normal Pension Age (65).")
-        apply_nuvos_early_reduction = st.checkbox("Apply Early Retirement Penalty (Nuvos)", value=curr_data.get("apply_nuvos_early_reduction", True), help="Automatically reduces payout if retiring before age 65 (e.g., -31.1% at 57).")
-        nuvos_salary = st.number_input("Current Annual Pensionable Salary (£)", min_value=0.0, value=float(curr_data.get("nuvos_salary", 57015.0)), step=1000.0, help="Current pensionable salary for CARE accrual.")
-        nuvos_accrual_rate = st.number_input("Annual CARE Accrual Rate (%)", min_value=0.0, max_value=10.0, value=float(curr_data.get("nuvos_accrual_rate", 2.3)), step=0.1, help="Standard Nuvos accrual rate is 2.3% per year.")
-        
-        nuvos_pause_enabled = st.checkbox("Enable Pause / Leave Scheme Date", value=curr_data.get("nuvos_pause_enabled", True), help="If checked, active 2.3% accrual stops on selected date (or retirement date).")
-
-        try:
-            max_nuvos_pause = date(dob.year + 85, dob.month, dob.day)
-        except ValueError:
-            max_nuvos_pause = date(dob.year + 85, 2, 28)
-
-        nuvos_pause_date = st.date_input(
-            "Nuvos Pause / Leave Scheme Date",
-            value=curr_data.get("nuvos_pause_date", date(dob.year + ret_age, dob.month, dob.day)),
-            min_value=date(2020, 1, 1),
-            max_value=max_nuvos_pause,
-            format="DD/MM/YYYY",
-            help="Date Karen leaves active scheme membership."
-        )
-
-    with st.expander("🏛 State Pension", expanded=False):
-        has_state_pension = st.checkbox("Include State Pension", value=curr_data.get("has_state_pension", True))
-        state_pension_age = st.number_input("State Pension Start Age", min_value=60, max_value=75, value=int(curr_data.get("state_pension_age", 67)))
-        state_pension_amount = st.number_input("State Pension Annual (£)", min_value=0.0, value=float(curr_data.get("state_pension_amount", 12548.0)), step=100.0)
-        state_pension_growth = st.slider("State Pension Annual Growth (%)", min_value=0.0, max_value=10.0, value=float(curr_data.get("state_pension_growth", 2.5)), step=0.1)
-
-    with st.expander("💰 Pot Balances, Returns & Contributions", expanded=False):
-        st.markdown("##### SIPP")
-        sipp_bal = st.number_input("SIPP Pot Balance (£)", value=float(curr_data["sipp_bal"]), step=5000.0)
-        sipp_ret = st.number_input("SIPP Annual Return (%)", min_value=-50.0, max_value=50.0, value=float(curr_data.get("sipp_ret", 7.0)), step=0.1)
-        sipp_contrib = st.number_input("SIPP Monthly Contribution (£)", value=float(curr_data.get("sipp_contrib", 500.0)), step=50.0)
-
-        st.markdown("##### Private Pension")
-        wp_bal = st.number_input("Private Pension Total (£)", value=float(curr_data["wp_bal"]), step=5000.0)
-        wp_ret = st.number_input("Private Pension Return (%)", min_value=-50.0, max_value=50.0, value=float(curr_data.get("wp_ret", 7.0)), step=0.1)
-        wp_contrib = st.number_input("Private Pension Monthly Contribution (£)", value=float(curr_data.get("wp_contrib", 700.0)), step=50.0)
-
-        st.markdown("##### Stocks & Shares ISA")
-        isa_bal = st.number_input("Stocks & Shares ISA (£)", value=float(curr_data["isa_bal"]), step=5000.0)
-        isa_ret = st.number_input("ISA Annual Return (%)", min_value=-50.0, max_value=50.0, value=float(curr_data.get("isa_ret", 7.0)), step=0.1)
-        isa_contrib = st.number_input("ISA Monthly Contribution (£)", value=float(curr_data.get("isa_contrib", 0.0)), step=50.0)
-
-        st.markdown("##### Other Investment")
-        other_bal = st.number_input("Other Investment (£)", value=float(curr_data["other_bal"]), step=5000.0)
-        other_ret = st.number_input("Other Return (%)", min_value=-50.0, max_value=50.0, value=float(curr_data.get("other_ret", 3.0)), step=0.1)
-        other_contrib = st.number_input("Other Monthly Contribution (£)", value=float(curr_data.get("other_contrib", 0.0)), step=50.0)
-
-    with st.expander("👁️ Display View", expanded=False):
-        view_mode = st.radio(
-            "Display View Mode",
-            ["Age Year (Annual)", "Monthly"],
-            index=0 if curr_data.get("view_mode", "Age Year (Annual)") in ["Age Year (Annual)", "Age Year", "Tax Year"] else 1,
-        )
-
-    submit_bottom = st.form_submit_button(
-        label="🔄 Recalculate Forecast", use_container_width=True, key="recalc_bottom"
-    )
-
-    if submit_top or submit_bottom:
-        st.session_state.scenarios[selected_profile] = {
-            "dob": dob,
-            "ret_age": ret_age,
-            "monthly_inc": monthly_inc,
-            "increased_monthly_inc": increased_monthly_inc,
-            "increase_date": increase_date,
-            "reduced_monthly_inc": reduced_monthly_inc,
-            "reduced_inc_age": reduced_inc_age,
-            "inflation_rate": inflation_rate,
-            "lump_sum_1_amt": ls1_amt,
-            "lump_sum_1_date": ls1_date,
-            "lump_sum_1_pot": ls1_pot,
-            "lump_sum_2_amt": ls2_amt,
-            "lump_sum_2_date": ls2_date,
-            "lump_sum_2_pot": ls2_pot,
-            "lump_sum_3_amt": ls3_amt,
-            "lump_sum_3_date": ls3_date,
-            "lump_sum_3_pot": ls3_pot,
-            "gilt_1_amt": g1_amt,
-            "gilt_1_price": g1_price,
-            "gilt_1_p_date": g1_p_date,
-            "gilt_1_m_date": g1_m_date,
-            "gilt_1_pot": g1_pot,
-            "gilt_1_coupon_pct": g1_coupon_pct,
-            "gilt_2_amt": g2_amt,
-            "gilt_2_price": g2_price,
-            "gilt_2_p_date": g2_p_date,
-            "gilt_2_m_date": g2_m_date,
-            "gilt_2_pot": g2_pot,
-            "gilt_2_coupon_pct": g2_coupon_pct,
-            "gilt_3_amt": g3_amt,
-            "gilt_3_price": g3_price,
-            "gilt_3_p_date": g3_p_date,
-            "gilt_3_m_date": g3_m_date,
-            "gilt_3_pot": g3_pot,
-            "gilt_3_coupon_pct": g3_coupon_pct,
-            "gilt_4_amt": g4_amt,
-            "gilt_4_price": g4_price,
-            "gilt_4_p_date": g4_p_date,
-            "gilt_4_m_date": g4_m_date,
-            "gilt_4_pot": g4_pot,
-            "gilt_4_coupon_pct": g4_coupon_pct,
-            "gilt_5_amt": g5_amt,
-            "gilt_5_price": g5_price,
-            "gilt_5_p_date": g5_p_date,
-            "gilt_5_m_date": g5_m_date,
-            "gilt_5_pot": g5_pot,
-            "gilt_5_coupon_pct": g5_coupon_pct,
-            "crash_pct": crash_pct,
-            "crash_date": crash_date,
-            "annuity_annual": annuity_annual,
-            "annuity_cost": annuity_cost,
-            "annuity_start_age": annuity_start_age,
-            "annuity_npa": annuity_npa,
-            "annuity_type": annuity_type,
-            "inflate_annuity_to_start": inflate_annuity_to_start,
-            "apply_db_early_reduction": apply_db_early_reduction,
-            "has_nuvos_pension": has_nuvos_pension,
-            "nuvos_annual": nuvos_annual,
-            "nuvos_baseline_date": nuvos_baseline_date,
-            "nuvos_npa": nuvos_npa,
-            "nuvos_pause_enabled": nuvos_pause_enabled,
-            "nuvos_pause_date": nuvos_pause_date,
-            "nuvos_salary": nuvos_salary,
-            "nuvos_accrual_rate": nuvos_accrual_rate,
-            "apply_nuvos_early_reduction": apply_nuvos_early_reduction,
-            "sipp_bal": sipp_bal,
-            "sipp_ret": sipp_ret,
-            "sipp_contrib": sipp_contrib,
-            "wp_bal": wp_bal,
-            "wp_ret": wp_ret,
-            "wp_contrib": wp_contrib,
-            "isa_bal": isa_bal,
-            "isa_ret": isa_ret,
-            "isa_contrib": isa_contrib,
-            "other_bal": other_bal,
-            "other_ret": other_ret,
-            "other_contrib": other_contrib,
-            "has_state_pension": has_state_pension,
-            "state_pension_age": state_pension_age,
-            "state_pension_amount": state_pension_amount,
-            "state_pension_growth": state_pension_growth,
-            "view_mode": view_mode,
-            "notes": curr_data.get("notes", ""),
-            "budget_items": curr_data.get("budget_items", []),
-        }
-        save_scenarios()
-        st.toast(f"Updated and saved '{selected_profile}'!", icon="✅")
-        st.rerun()
-
+# Run Engine
+engine = JointRetirementEngine(joint_scenario)
+daily_df, annual_df = engine.run_joint_simulation()
 
 # ----------------------------------------------------------------------
-# 5. Main Dashboard Display
+# 4. Main Dashboard Output
 # ----------------------------------------------------------------------
 
-active_p = st.session_state.scenarios[selected_profile]
-
-lump_sums_list = [
-    LumpSum(
-        amount=active_p.get("lump_sum_1_amt", 0.0),
-        injection_date=active_p.get("lump_sum_1_date", get_next_tax_year_start()),
-        target_pot="Private Pension" if active_p.get("lump_sum_1_pot") == "Workplace Pension" else active_p.get("lump_sum_1_pot", "S&S ISA"),
-    ),
-    LumpSum(
-        amount=active_p.get("lump_sum_2_amt", 0.0),
-        injection_date=active_p.get("lump_sum_2_date", get_next_tax_year_start()),
-        target_pot="Private Pension" if active_p.get("lump_sum_2_pot") == "Workplace Pension" else active_p.get("lump_sum_2_pot", "S&S ISA"),
-    ),
-    LumpSum(
-        amount=active_p.get("lump_sum_3_amt", 0.0),
-        injection_date=active_p.get("lump_sum_3_date", get_next_tax_year_start()),
-        target_pot="Private Pension" if active_p.get("lump_sum_3_pot") == "Workplace Pension" else active_p.get("lump_sum_3_pot", "S&S ISA"),
-    ),
-]
-
-gilts_list = [
-    GiltBond(
-        amount=active_p.get("gilt_1_amt", 0.0),
-        purchase_price_pct=active_p.get("gilt_1_price", 100.0),
-        purchase_date=active_p.get("gilt_1_p_date", get_next_tax_year_start()),
-        maturity_date=active_p.get("gilt_1_m_date", get_next_tax_year_start()),
-        target_pot=active_p.get("gilt_1_pot", "S&S ISA"),
-        coupon_pct=active_p.get("gilt_1_coupon_pct", 0.0),
-    ),
-    GiltBond(
-        amount=active_p.get("gilt_2_amt", 0.0),
-        purchase_price_pct=active_p.get("gilt_2_price", 100.0),
-        purchase_date=active_p.get("gilt_2_p_date", get_next_tax_year_start()),
-        maturity_date=active_p.get("gilt_2_m_date", get_next_tax_year_start()),
-        target_pot=active_p.get("gilt_2_pot", "S&S ISA"),
-        coupon_pct=active_p.get("gilt_2_coupon_pct", 0.0),
-    ),
-    GiltBond(
-        amount=active_p.get("gilt_3_amt", 0.0),
-        purchase_price_pct=active_p.get("gilt_3_price", 100.0),
-        purchase_date=active_p.get("gilt_3_p_date", get_next_tax_year_start()),
-        maturity_date=active_p.get("gilt_3_m_date", get_next_tax_year_start()),
-        target_pot=active_p.get("gilt_3_pot", "S&S ISA"),
-        coupon_pct=active_p.get("gilt_3_coupon_pct", 0.0),
-    ),
-    GiltBond(
-        amount=active_p.get("gilt_4_amt", 0.0),
-        purchase_price_pct=active_p.get("gilt_4_price", 100.0),
-        purchase_date=active_p.get("gilt_4_p_date", get_next_tax_year_start()),
-        maturity_date=active_p.get("gilt_4_m_date", get_next_tax_year_start()),
-        target_pot=active_p.get("gilt_4_pot", "S&S ISA"),
-        coupon_pct=active_p.get("gilt_4_coupon_pct", 0.0),
-    ),
-    GiltBond(
-        amount=active_p.get("gilt_5_amt", 0.0),
-        purchase_price_pct=active_p.get("gilt_5_price", 100.0),
-        purchase_date=active_p.get("gilt_5_p_date", get_next_tax_year_start()),
-        maturity_date=active_p.get("gilt_5_m_date", get_next_tax_year_start()),
-        target_pot=active_p.get("gilt_5_pot", "S&S ISA"),
-        coupon_pct=active_p.get("gilt_5_coupon_pct", 0.0),
-    ),
-]
-
-scenario_obj = Scenario(
-    name=selected_profile,
-    sipp=PotConfig(
-        balance=active_p["sipp_bal"],
-        annual_return=active_p["sipp_ret"] / 100.0,
-        monthly_contrib=active_p.get("sipp_contrib", 500.0),
-    ),
-    workplace_pension_total=active_p["wp_bal"],
-    workplace_pension_return=active_p["wp_ret"] / 100.0,
-    workplace_pension_contrib=active_p.get("wp_contrib", 700.0),
-    isa=PotConfig(
-        balance=active_p["isa_bal"],
-        annual_return=active_p["isa_ret"] / 100.0,
-        monthly_contrib=active_p.get("isa_contrib", 0.0),
-    ),
-    other_investment=PotConfig(
-        balance=active_p["other_bal"],
-        annual_return=active_p["other_ret"] / 100.0,
-        monthly_contrib=active_p.get("other_contrib", 0.0),
-    ),
-    has_state_pension=active_p.get("has_state_pension", True),
-    state_pension_age=active_p.get("state_pension_age", 67),
-    state_pension_amount=active_p.get("state_pension_amount", 12548.0),
-    lump_sums=lump_sums_list,
-    gilts_bonds=gilts_list,
-    state_pension_growth=active_p.get("state_pension_growth", 2.5) / 100.0,
-    inflation_rate=active_p.get("inflation_rate", 3.0) / 100.0,
-    annuity_annual=active_p.get("annuity_annual", 0.0),
-    annuity_cost=active_p.get("annuity_cost", 0.0),
-    annuity_start_age=int(active_p.get("annuity_start_age", active_p["ret_age"])),
-    annuity_npa=int(active_p.get("annuity_npa", 65)),
-    annuity_type=active_p.get("annuity_type", "Inflation-Linked (RPI/CPI)"),
-    inflate_annuity_to_start=active_p.get("inflate_annuity_to_start", True),
-    apply_db_early_reduction=active_p.get("apply_db_early_reduction", True),
-    has_nuvos_pension=active_p.get("has_nuvos_pension", False),
-    nuvos_annual=active_p.get("nuvos_annual", 15929.31),
-    nuvos_baseline_date=active_p.get("nuvos_baseline_date", date(2025, 3, 31)),
-    nuvos_npa=int(active_p.get("nuvos_npa", 65)),
-    nuvos_pause_enabled=active_p.get("nuvos_pause_enabled", True),
-    nuvos_pause_date=active_p.get("nuvos_pause_date", get_next_tax_year_start()),
-    nuvos_salary=active_p.get("nuvos_salary", 57015.0),
-    nuvos_accrual_rate=active_p.get("nuvos_accrual_rate", 2.3),
-    apply_nuvos_early_reduction=active_p.get("apply_nuvos_early_reduction", True),
-    increased_monthly_inc=active_p.get("increased_monthly_inc", 0.0),
-    increase_date=active_p.get("increase_date", get_next_tax_year_start()),
-    reduced_monthly_inc=active_p.get("reduced_monthly_inc", active_p["monthly_inc"]),
-    reduced_inc_age=int(active_p.get("reduced_inc_age", 80)),
-    crash_pct=active_p.get("crash_pct", 0.0),
-    crash_date=active_p.get("crash_date", get_next_tax_year_start()),
-)
-
-engine = RetirementEngine(
-    dob=active_p["dob"],
-    retirement_age=int(active_p["ret_age"]),
-    monthly_income=active_p["monthly_inc"],
-    scenario=scenario_obj,
-)
-
-m_df, age_year_df = engine.run_simulation()
-
-is_annual_view = active_p.get("view_mode", "Age Year (Annual)") in ["Age Year (Annual)", "Age Year", "Tax Year"]
-active_df = age_year_df if is_annual_view else m_df
-x_col = "age_year_label" if is_annual_view else "year_month"
-annual_inc = int(round(active_p["monthly_inc"] * 12.0))
-
-today = date.today()
-current_age = (
-    today.year
-    - active_p["dob"].year
-    - ((today.month, today.day) < (active_p["dob"].month, active_p["dob"].day))
-)
-
-retired_df = active_df[active_df["is_retired"]]
-depleted_rows = retired_df[retired_df["total_portfolio"] <= 0]
-
-if not depleted_rows.empty:
-    depleted_val_str = f"Age {int(depleted_rows.iloc[0]['age'])}"
-else:
-    final_bal = int(round(active_df.iloc[-1]["total_portfolio"]))
-    depleted_val_str = f"£{final_bal:,}"
-
-min_ret_age = find_minimum_retirement_age(active_p["dob"], active_p["monthly_inc"], scenario_obj)
-min_ret_age_str = f"Age {min_ret_age}" if min_ret_age is not None else "N/A (>85)"
-
-st.subheader(f"Showing Profile: **{selected_profile}**")
-
-st.markdown(
-    """
-    <style>
-    [data-testid="stMetricValue"] {
-        font-size: 1.2rem !important;
-    }
-    [data-testid="stMetricLabel"] {
-        font-size: 0.85rem !important;
-    }
-    </style>
-    """,
-    unsafe_allow_html=True,
-)
-
-col1, col2, col3, col4, col5, col6, col7 = st.columns(7)
-col1.metric("Current Age", f"{current_age}")
-col2.metric("Target Retirement Age", f"{int(active_p['ret_age'])}")
-col3.metric("Peak Portfolio Value", f"£{int(round(active_df['total_portfolio'].max())):,}")
-col4.metric("Desired Monthly Income", f"£{int(round(active_p['monthly_inc'])):,}")
-col5.metric("Desired Annual Income", f"£{annual_inc:,}")
-col6.metric("Portfolio Depleted / Age 100", depleted_val_str)
-col7.metric("Minimum retirement age for scenario", min_ret_age_str)
+col1, col2, col3 = st.columns(3)
+col1.metric("Julian Retirement Age", f"Age {p1_ret_age}")
+col2.metric("Karen Retirement Age", f"Age {p2_ret_age}")
+col3.metric("Peak Portfolio Value", f"£{int(round(annual_df['total_portfolio'].max())):,}")
 
 st.markdown("---")
 
-st.subheader("📊 Portfolio Trajectory & Drawdown Forecast")
+st.subheader("📊 Household Portfolio Trajectory")
 st.line_chart(
-    active_df,
-    x="age" if is_annual_view else "year_month",
-    y=["sipp", "private_pension", "isa", "other_investment", "investment_income", "total_portfolio", "desired_annual_income"],
+    annual_df,
+    x="dual_age_label",
+    y=["total_portfolio", "p1_portfolio", "p2_portfolio"],
 )
 
-st.subheader("📋 Balances and Drawdown Table (Up to Age 100)")
-
-table_column_config = {
-    "desired_monthly_income": st.column_config.NumberColumn("Desired Monthly Income", format="£%,d"),
-    "desired_annual_income": st.column_config.NumberColumn("Desired Annual Income", format="£%,d"),
-    "sipp": st.column_config.NumberColumn("SIPP", format="£%,d"),
-    "private_pension": st.column_config.NumberColumn("Private Pension", format="£%,d"),
-    "isa": st.column_config.NumberColumn("S&S ISA", format="£%,d"),
-    "other_investment": st.column_config.NumberColumn("Other Investment", format="£%,d"),
-    "investment_income": st.column_config.NumberColumn("Investment Income", format="£%,d"),
-    "total_portfolio": st.column_config.NumberColumn("Total Portfolio", format="£%,d"),
-    "annuity_income": st.column_config.NumberColumn("Combined DB/Annuity Income (Annual)", format="£%,d"),
-    "state_pension_income": st.column_config.NumberColumn("State Pension Income", format="£%,d"),
-    "pot_income_drawn": st.column_config.NumberColumn("Pot Income Drawn", format="£%,d"),
-    "monthly_net_income": st.column_config.NumberColumn("Monthly Net Income", format="£%,d"),
-    "tax_paid": st.column_config.NumberColumn("Tax Paid", format="£%,d"),
-}
-
-st.dataframe(active_df, column_config=table_column_config, height=670, use_container_width=True)
-
-# ----------------------------------------------------------------------
-# Narrative Explorer Section
-# ----------------------------------------------------------------------
-st.markdown("---")
-st.subheader("📖 Annual Income & Drawdown Narrative Explorer")
-
-year_options = active_df[x_col].tolist()
-selected_year_label = st.selectbox("Select an Age/Period to Inspect Narrative:", options=year_options)
-
-selected_row = active_df[active_df[x_col] == selected_year_label].iloc[0]
-
-age_val = int(selected_row["age"])
-desired_inc = int(selected_row["desired_annual_income"] if is_annual_view else selected_row["desired_monthly_income"] * 12)
-state_pen = int(selected_row["state_pension_income"] * (1 if is_annual_view else 12))
-annuity_inc = int(selected_row["annuity_income"])
-pot_drawn = int(selected_row["pot_income_drawn"] * (1 if is_annual_view else 12))
-tax_paid = int(selected_row["tax_paid"] * (1 if is_annual_view else 12))
-is_ret = selected_row["is_retired"]
-
-mult_factor = 1 if is_annual_view else 12
-draw_sipp_val = int(round(selected_row["draw_sipp"] * mult_factor))
-draw_wp_taxable_val = int(round(selected_row["draw_wp_taxable"] * mult_factor))
-draw_wp_taxfree_val = int(round(selected_row["draw_wp_taxfree"] * mult_factor))
-draw_isa_val = int(round(selected_row["draw_isa"] * mult_factor))
-draw_other_val = int(round(selected_row["draw_other"] * mult_factor))
-
-ncol1, ncol2, ncol3 = st.columns(3)
-ncol1.metric("Target Annual Income Needed", f"£{desired_inc:,}")
-ncol2.metric("Pot Drawdowns Required", f"£{pot_drawn:,}")
-ncol3.metric("Tax Paid", f"£{tax_paid:,}")
-
-if not is_ret:
-    st.info(f"**Status at Age {age_val}:** You are still in your **working phase** (pre-retirement). Regular monthly contributions are actively building your investment pots.")
-else:
-    guaranteed_total = state_pen + annuity_inc
-    st.success(f"""
-    **Retirement Narrative for {selected_year_label}:**
-    * **Target Income Goal:** You required **£{desired_inc:,}** net for the year.
-    * **Guaranteed Income:** **£{guaranteed_total:,}** was covered automatically (£{annuity_inc:,} from your Combined DB/Nuvos & Annuity pensions and £{state_pen:,} from your State Pension).
-    * **Investment Pot Drawdowns:** To cover the remaining shortfall, a total of **£{pot_drawn:,}** was systematically drawn across your pots:
-      * **SIPP:** £{draw_sipp_val:,}
-      * **Private Pension (Taxable):** £{draw_wp_taxable_val:,}
-      * **Private Pension (Tax-Free):** £{draw_wp_taxfree_val:,}
-      * **Stocks & Shares ISA:** £{draw_isa_val:,}
-      * **Other Investments:** £{draw_other_val:,}
-    * **Tax Summary:** An estimated **£{tax_paid:,}** in income tax was incurred and paid during this period.
-    """)
-
-st.markdown("---")
-
-# ----------------------------------------------------------------------
-# 6. Budget Manager & Custom Notes Sections
-# ----------------------------------------------------------------------
-
-col_sec1, col_sec2 = st.columns(2)
-
-with col_sec1:
-    with st.expander("💳 Household Budget Manager", expanded=False):
-        st.markdown(f"### Monthly Budget for **{selected_profile}**")
-        st.caption("Align your household outgoings against your desired monthly income target.")
-
-        sort_key_state = f"sort_pref_{selected_profile}"
-        if sort_key_state not in st.session_state:
-            st.session_state[sort_key_state] = "Alphabetical"
-
-        sort_option = st.radio(
-            "Sort Expenditure Items By:",
-            options=["Alphabetical", "Monthly Amount (High to Low)"],
-            horizontal=True,
-            key=f"budget_sort_option_{selected_profile}"
-        )
-
-        if sort_option != st.session_state[sort_key_state]:
-            st.session_state[sort_key_state] = sort_option
-            raw_items_to_clear = st.session_state.scenarios[selected_profile].get("budget_items", [])
-            for item in raw_items_to_clear:
-                item_id = item.get("id", "")
-                st.session_state.pop(f"budget_item_{selected_profile}_{item_id}", None)
-                st.session_state.pop(f"budget_month_{selected_profile}_{item_id}", None)
-                st.session_state.pop(f"budget_amt_{selected_profile}_{item_id}", None)
-                st.session_state.pop(f"budget_annual_{selected_profile}_{item_id}", None)
-            st.rerun()
-
-        raw_budget_items = st.session_state.scenarios[selected_profile].get("budget_items", [])
-
-        current_items = []
-        for item in raw_budget_items:
-            item_id = item.get("id", str(uuid.uuid4()))
-            item["id"] = item_id
-            
-            item_val = st.session_state.get(f"budget_item_{selected_profile}_{item_id}", item.get("item", item.get("category", "")))
-            month_val = st.session_state.get(f"budget_month_{selected_profile}_{item_id}", item.get("month_paid", "Monthly"))
-            
-            default_monthly = float(item.get("amount", 0.0))
-            default_annual = float(item.get("annual_amount", default_monthly * 12.0))
-            
-            monthly_key = f"budget_amt_{selected_profile}_{item_id}"
-            annual_key = f"budget_annual_{selected_profile}_{item_id}"
-            
-            monthly_val = st.session_state.get(monthly_key, default_monthly)
-            annual_val = st.session_state.get(annual_key, default_annual)
-            
-            current_items.append({"id": item_id, "item": item_val, "month_paid": month_val, "amount": monthly_val, "annual_amount": annual_val})
-
-        if st.session_state[sort_key_state] == "Alphabetical":
-            budget_items = sorted(current_items, key=lambda x: str(x.get("item", "")).lower())
-        else:
-            budget_items = sorted(current_items, key=lambda x: float(x.get("amount", 0.0)), reverse=True)
-
-        total_budget_outgoings = sum(item.get("amount", 0.0) for item in budget_items)
-        desired_inc = float(active_p["monthly_inc"])
-        budget_variance = desired_inc - total_budget_outgoings
-
-        bcol1, bcol2, bcol3 = st.columns(3)
-        bcol1.metric("Total Outgoings", f"£{total_budget_outgoings:,.2f}")
-        bcol2.metric("Desired Income", f"£{desired_inc:,.2f}")
-        bcol3.metric("Monthly Buffer / Surplus", f"£{budget_variance:,.2f}", delta=f"£{budget_variance:,.2f}")
-
-        st.markdown("---")
-        
-        hcol1, hcol2, hcol3, hcol4, hcol5, hcol6 = st.columns([3, 2, 2, 2, 2, 1])
-        with hcol1:
-            st.markdown("**Expenditure Item**")
-        with hcol2:
-            st.markdown("**Month Paid**")
-        with hcol3:
-            st.markdown("**Monthly Amount**")
-        with hcol4:
-            st.markdown("**Annual Amount**")
-        with hcol5:
-            st.markdown("**% of Budget**")
-        with hcol6:
-            st.markdown("")
-
-        surviving_budget_items = []
-        for i, item in enumerate(budget_items):
-            item_id = item["id"]
-            cols = st.columns([3, 2, 2, 2, 2, 1])
-            with cols[0]:
-                item_val = st.text_input("Expenditure Item", value=item.get("item", ""), key=f"budget_item_{selected_profile}_{item_id}", label_visibility="collapsed")
-            with cols[1]:
-                current_month_val = item.get("month_paid", "Monthly")
-                month_idx = MONTH_OPTIONS.index(current_month_val) if current_month_val in MONTH_OPTIONS else 0
-                month_val = st.selectbox("Month Paid", options=MONTH_OPTIONS, index=month_idx, key=f"budget_month_{selected_profile}_{item_id}", label_visibility="collapsed")
-            
-            monthly_key = f"budget_amt_{selected_profile}_{item_id}"
-            annual_key = f"budget_annual_{selected_profile}_{item_id}"
-
-            def make_sync_monthly(a_k=annual_key, m_k=monthly_key):
-                def sync():
-                    if a_k in st.session_state and m_k in st.session_state:
-                        st.session_state[a_k] = st.session_state[m_k] * 12.0
-                return sync
-
-            def make_sync_annual(a_k=annual_key, m_k=monthly_key):
-                def sync():
-                    if a_k in st.session_state and m_k in st.session_state:
-                        st.session_state[m_k] = st.session_state[a_k] / 12.0
-                return sync
-
-            with cols[2]:
-                amt_val = st.number_input("Monthly Amount", value=float(item.get("amount", 0.0)), step=25.0, key=monthly_key, on_change=make_sync_monthly(), label_visibility="collapsed")
-            with cols[3]:
-                annual_val = st.number_input("Annual Amount", value=float(item.get("annual_amount", item.get("amount", 0.0) * 12.0)), step=100.0, key=annual_key, on_change=make_sync_annual(), label_visibility="collapsed")
-            with cols[4]:
-                pct_val = (amt_val / total_budget_outgoings * 100.0) if total_budget_outgoings > 0 else 0.0
-                st.markdown(f"**{pct_val:.1f}%**")
-            with cols[5]:
-                remove_clicked = st.button("🗑️", key=f"del_budget_{selected_profile}_{item_id}")
-            
-            if remove_clicked:
-                for b_item in budget_items:
-                    b_id = b_item.get("id", "")
-                    st.session_state.pop(f"budget_item_{selected_profile}_{b_id}", None)
-                    st.session_state.pop(f"budget_month_{selected_profile}_{b_id}", None)
-                    st.session_state.pop(f"budget_amt_{selected_profile}_{b_id}", None)
-                    st.session_state.pop(f"budget_annual_{selected_profile}_{b_id}", None)
-                budget_items.pop(i)
-                st.session_state.scenarios[selected_profile]["budget_items"] = budget_items
-                save_scenarios()
-                st.rerun()
-            else:
-                surviving_budget_items.append({"id": item_id, "item": item_val, "month_paid": month_val, "amount": amt_val, "annual_amount": annual_val})
-
-        st.markdown("##### Add New Expenditure Item")
-        new_item_key = f"new_item_name_{selected_profile}"
-        new_month_key = f"new_month_val_{selected_profile}"
-        new_amt_key = f"new_amt_val_{selected_profile}"
-        new_annual_key = f"new_annual_val_{selected_profile}"
-
-        new_item_name = st.text_input("New Expenditure Item Name", placeholder="e.g. Insurance, Gym...", key=new_item_key)
-        new_month = st.selectbox("New Month Paid", options=MONTH_OPTIONS, key=new_month_key)
-        new_amt = st.number_input("New Monthly Amount (£)", min_value=0.0, value=0.0, step=25.0, key=new_amt_key)
-        new_annual = st.number_input("New Annual Amount (£)", min_value=0.0, value=0.0, step=100.0, key=new_annual_key)
-
-        if st.button("➕ Add Item to Budget", key=f"add_budget_btn_{selected_profile}"):
-            if new_item_name and new_item_name.strip():
-                final_monthly = new_amt
-                final_annual = new_annual if new_annual > 0 else new_amt * 12.0
-                if new_annual > 0 and new_amt == 0:
-                    final_monthly = new_annual / 12.0
-
-                for b_item in surviving_budget_items:
-                    b_id = b_item.get("id", "")
-                    st.session_state.pop(f"budget_item_{selected_profile}_{b_id}", None)
-                    st.session_state.pop(f"budget_month_{selected_profile}_{b_id}", None)
-                    st.session_state.pop(f"budget_amt_{selected_profile}_{b_id}", None)
-                    st.session_state.pop(f"budget_annual_{selected_profile}_{b_id}", None)
-
-                surviving_budget_items.append({
-                    "id": str(uuid.uuid4()),
-                    "item": new_item_name.strip(),
-                    "month_paid": new_month,
-                    "amount": final_monthly,
-                    "annual_amount": final_annual
-                })
-                if st.session_state[sort_key_state] == "Alphabetical":
-                    surviving_budget_items = sorted(surviving_budget_items, key=lambda x: str(x.get("item", "")).lower())
-                else:
-                    surviving_budget_items = sorted(surviving_budget_items, key=lambda x: float(x.get("amount", 0.0)), reverse=True)
-                st.session_state.scenarios[selected_profile]["budget_items"] = surviving_budget_items
-                save_scenarios()
-                st.session_state.pop(new_item_key, None)
-                st.session_state.pop(new_amt_key, None)
-                st.session_state.pop(new_annual_key, None)
-                st.success("Item added!")
-                st.rerun()
-            else:
-                st.warning("Please enter an expenditure item name.")
-
-        if st.button("💾 Save Budget Changes", key=f"save_budget_btn_{selected_profile}"):
-            for b_item in surviving_budget_items:
-                b_id = b_item.get("id", "")
-                st.session_state.pop(f"budget_item_{selected_profile}_{b_id}", None)
-                st.session_state.pop(f"budget_month_{selected_profile}_{b_id}", None)
-                st.session_state.pop(f"budget_amt_{selected_profile}_{b_id}", None)
-                st.session_state.pop(f"budget_annual_{selected_profile}_{b_id}", None)
-
-            if st.session_state[sort_key_state] == "Alphabetical":
-                surviving_budget_items = sorted(surviving_budget_items, key=lambda x: str(x.get("item", "")).lower())
-            else:
-                surviving_budget_items = sorted(surviving_budget_items, key=lambda x: float(x.get("amount", 0.0)), reverse=True)
-            st.session_state.scenarios[selected_profile]["budget_items"] = surviving_budget_items
-            save_scenarios()
-            st.toast(f"Budget saved for profile '{selected_profile}'!", icon="💾")
-            st.rerun()
-
-with col_sec2:
-    with st.expander("📝 Custom Profile Notes", expanded=False):
-        notes_key = f"notes_input_{selected_profile}"
-        user_notes = st.text_area(
-            "Notes & Key Assumptions for this Profile:",
-            value=active_p.get("notes", ""),
-            height=180,
-            key=notes_key,
-            placeholder="Type any custom notes, reminders, or scenario assumptions here...",
-        )
-        if st.button("💾 Save Notes", key=f"save_notes_btn_{selected_profile}"):
-            st.session_state.scenarios[selected_profile]["notes"] = user_notes
-            save_scenarios()
-            st.toast(f"Notes saved for profile '{selected_profile}'!", icon="💾")
-
-st.markdown("---")
-
-col_notes1, col_notes2 = st.columns(2)
-
-with col_notes1:
-    with st.expander("📖 Drawdown Priorities & Engine Logic Notes"):
-        st.markdown("""
-        ### Post-Retirement Drawdown Priorities & Rules
-
-        This engine applies strict, tax-efficient drawdown rules in a defined sequence on the 1st of every month:
-
-        1. **Guaranteed Income First (Annuity, Nuvos & State Pension):**
-           * **Annuities / DB / Nuvos Pensions:** Annual pension payments are applied first and increase with inflation (or remain flat if level) after Year 1. Nuvos actively accrues 2.3% of salary up to your pause date, while statutory inflation revaluation continues on accumulated pots until your Target Retirement Age.
-           * **State Pension:** Applied automatically once you reach your configured State Pension age, escalating annually by your growth input.
-           * **Excess Income Recycling:** If guaranteed income exceeds your target inflation-adjusted monthly income, the surplus is automatically deposited into your **S&S ISA** (up to the **£20,000/year** limit), with any remaining excess directed to **Other Investments**.
-
-        2. **Market Stress Buffer & Rebound Strategy (> 5% Crash Trigger):**
-           * If a market crash occurs, equity pots (**SIPP**, **Private Pension**, **ISA**) drop by the configured percentage.
-           * **Accelerated Rebound Rule:** During market recovery, growth rates across equity pots are temporarily **doubled ($2.0 \times r$)** until the underlying market index recovers back to its pre-crash level.
-           * **Income Protection Buffer:** If configured, target monthly income is capped to the State Pension level for 2 years post-crash to protect pots from sequence-of-returns risk.
-
-        3. **Standard Tax-Optimized Drawdown Hierarchy:**
-           When guaranteed income is insufficient, the required shortfall is satisfied using the following priority order:
-           * **Priority 1 (Personal Allowance Utilization):** Draws taxable pensions (**SIPP** and **75% Private Pension**) up to the remaining UK Personal Allowance threshold (**£12,570/year**) to receive income **100% tax-free**.
-           * **Priority 2 (Tax-Free ISA Capital):** Draws from **S&S ISA** to fulfill remaining income needs without incurring income tax.
-           * **Priority 3 (Tax-Free Pension Capital):** Draws from the tax-free portion (**25% Private Pension**).
-           * **Priority 4 (Basic Rate Taxable Pensions):** Draws taxable pensions above the Personal Allowance, applying basic-rate income tax (**20%**) to calculate gross withdrawals.
-           * **Priority 5 (Other Investments Fallback):** Draws remaining needs from non-registered/taxable investments.
-        """)
-
-    with st.expander("🏛️ Karen's Nuvos Pension Logic Notes", expanded=False):
-        st.markdown("""
-        ### Research Councils Nuvos Defined Benefit Pension Mechanics
-
-        The Nuvos scheme simulation operates under the following rules:
-
-        1. **Baseline Initialization:**
-           * Starts with your recorded accrued baseline figure (e.g., **£15,929.31/year** from the March 2025 statement).
-
-        2. **Active Accrual vs. Inflation Revaluation:**
-           * **Inflation Revaluation:** Every April 1st, the entire accumulated pension pot increases by the **Annual Inflation Rate (%)**, ensuring deferred or active pots maintain real-terms purchasing power up until your Target Retirement Age.
-           * **Active 2.3% Accrual:** In addition to inflation revaluation, new pension is earned each year (2.3% of pensionable salary) *until* your configured **Pause / Leave Scheme Date** (if enabled). 
-           * Once the pause date is reached, active career-average accrual ceases, but statutory inflation revaluation continues compounding on the pot until payments commence at your Target Retirement Age.
-        """)
-
-with col_notes2:
-    with st.expander("📚 Historical Market Crash & Recovery Reference Data"):
-        st.markdown("""
-        ### Top 10 Global Market Crashes & Recovery Timelines
-        
-        | # | Event & Timeline | S&P 500 Decline (%) | S&P 500 Recovery Time | FTSE 100 Decline (%) | FTSE 100 Recovery Time | Primary Driver |
-        |---|---|---|---|---|---|---|
-        | **1** | **Wall Street Crash** *(1929–1932)* | **-86.2%** | **~25.2 years** *(Nov 1954)* | **N/A** *(FT Ord: ~24 yrs)* | **N/A** | Speculative equity bubble, margin leverage, banking panics |
-        | **2** | **OPEC Oil Shock** *(1973–1974)* | **-48.2%** | **~7.5 years** *(Jul 1980)* | **N/A** *(FT Ord: ~3.5 yrs)* | **N/A** | Arab oil embargo, high inflation, Bretton Woods collapse |
-        | **3** | **Black Monday** *(1987)* | **-33.5%** | **~1.8 years** *(Jul 1989)* | **-36.8%** | **~2.1 years** *(Nov 1989)* | Automated program trading, valuation concerns |
-        | **4** | **Gulf War Crash** *(1990)* | **-19.9%** | **~6 months** *(Feb 1991)* | **-21.8%** | **~7 months** *(Feb 1991)* | Iraqi invasion of Kuwait, oil price spike, US recession |
-        | **5** | **Russian Debt & LTCM** *(1998)* | **-19.3%** | **~3 months** *(Nov 1998)* | **-21.7%** | **~6 months** *(Feb 1999)* | Russian sovereign debt default, LTCM hedge fund collapse |
-        | **6** | **Dot-Com Bubble Burst** *(2000–2003)* | **-49.1%** | **~7.2 years** *(May 2007)* | **-52.6%** | **~7.8 years** *(Nov 2007)* | Tech overvaluation, corporate accounting scandals |
-        | **7** | **Global Financial Crisis** *(2007–2009)* | **-56.8%** | **~5.5 years** *(Mar 2013)* | **-48.3%** | **~7.3 years** *(Feb 2015)* | Subprime mortgage collapse, Lehman Brothers collapse |
-        | **8** | **European Debt Crisis** *(2011)* | **-19.4%** | **~6 months** *(Feb 2012)* | **-20.2%** | **~1.5 years** *(Feb 2013)* | Eurozone debt fears (Greece/Italy), US credit downgrade |
-        | **9** | **COVID-19 Pandemic** *(2020)* | **-33.9%** | **~5 months** *(Aug 2020)* | **-34.8%** | **~2.8 years** *(Jan 2023)* | Global lockdowns, economic shutdown, pandemic uncertainty |
-        | **10** | **Inflation & Rate Hikes** *(2022)* | **-25.4%** | **~2.2 years** *(Jan 2024)* | **-10.3%** | **~4 months** *(Feb 2023)* | Post-pandemic inflation spike, aggressive rate hikes |
-        """)
+st.subheader("📋 Household Balances Table (Side-by-Side Ages)")
+st.dataframe(
+    annual_df,
+    column_config={
+        "dual_age_label": st.column_config.TextColumn("Individual Ages (Side-by-Side)"),
+        "total_portfolio": st.column_config.NumberColumn("Combined Portfolio", format="£%,d"),
+        "p1_portfolio": st.column_config.NumberColumn("Julian Portfolio", format="£%,d"),
+        "p2_portfolio": st.column_config.NumberColumn("Karen Portfolio", format="£%,d"),
+    },
+    use_container_width=True,
+    height=600,
+)
