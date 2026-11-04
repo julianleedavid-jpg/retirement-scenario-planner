@@ -1720,6 +1720,9 @@ with st.expander("📉 Multi-Start-Year Historical Stress Test (1985–Present)"
                 min_year = 1985
                 fig = go.Figure()
                 
+                total_sims = 0
+                successful_sims = 0
+                
                 for start_yr in range(min_year, 2023):
                     sim_start_date = date(start_yr, 1, 1)
                     subset_returns = full_hist_returns[full_hist_returns.index >= sim_start_date]
@@ -1738,6 +1741,13 @@ with st.expander("📉 Multi-Start-Year Historical Stress Test (1985–Present)"
                         historical_returns_series=aligned_returns,
                     )
                     _, roll_age_df = roll_engine.run_simulation()
+                    
+                    total_sims += 1
+                    roll_retired_df = roll_age_df[roll_age_df["is_retired"]]
+                    roll_depleted = roll_retired_df[roll_retired_df["total_portfolio"] <= 0]
+                    survived = roll_depleted.empty
+                    if survived:
+                        successful_sims += 1
                     
                     fig.add_trace(go.Scatter(
                         x=roll_age_df["age"],
@@ -1764,6 +1774,12 @@ with st.expander("📉 Multi-Start-Year Historical Stress Test (1985–Present)"
                     hovermode="closest",
                     height=600,
                     template="streamlit"
+                )
+                
+                success_pct = (successful_sims / total_sims * 100.0) if total_sims > 0 else 0.0
+                st.metric(
+                    label="Historical Success Rate (Survived to Age 100 without depletion)",
+                    value=f"{successful_sims} out of {total_sims} start years ({success_pct:.1f}%)"
                 )
                 
                 st.plotly_chart(fig, use_container_width=True)
