@@ -1,5 +1,3 @@
 streamlit
-streamlit-gsheets
 pandas
-requests
-yfinance
+st-gsheets-connection
