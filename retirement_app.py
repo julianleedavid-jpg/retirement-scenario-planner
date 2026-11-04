@@ -1077,12 +1077,16 @@ def find_minimum_retirement_age(dob: date, monthly_income: float, base_scenario:
 @st.cache_data(ttl=86400)
 def fetch_historical_index_returns(ticker: str, start_date_str: str = "1985-01-01") -> pd.Series:
     """Fetches historical adjusted close prices from Yahoo Finance and computes daily returns."""
-    import yfinance as yf
+    try:
+        import yfinance as yf
+    except ImportError:
+        st.error("❌ The `yfinance` package is not installed. Please add `yfinance` to your `requirements.txt` file.")
+        return None
+
     try:
         data = yf.download(ticker, start=start_date_str, progress=False)
         if data.empty:
             return None
-        # Handle multi-index columns if returned by newer yfinance versions
         if isinstance(data.columns, pd.MultiIndex):
             prices = data[("Adj Close", ticker)] if ("Adj Close", ticker) in data.columns else data.iloc[:, 0]
         else:
@@ -1092,6 +1096,7 @@ def fetch_historical_index_returns(ticker: str, start_date_str: str = "1985-01-0
         daily_ret.index = pd.to_datetime(daily_ret.index).date
         return daily_ret
     except Exception as e:
+        st.warning(f"Could not fetch historical data: {e}")
         return None
 
 
@@ -1687,54 +1692,84 @@ col7.metric("Minimum retirement age for scenario", min_ret_age_str)
 st.markdown("---")
 
 # ----------------------------------------------------------------------
-# Interactive Historical Index Stress Test Feature (S&P 500 / FTSE 100 since 1985)
+# Interactive Multi-Start-Year Historical Stress Test Feature (Plotly)
 # ----------------------------------------------------------------------
-with st.expander("📉 Historical Market Index Stress Test (1985–Present)", expanded=False):
-    st.markdown("Test your active portfolio profile against actual recorded historical index returns starting from 1985 onward (incorporating Black Monday 1987, the Dot-Com Crash, the 2008 GFC, and the 2022 inflation shock).")
+with st.expander("📉 Multi-Start-Year Historical Stress Test (1985–Present)", expanded=False):
+    st.markdown("Simulate your active profile starting retirement in **every historical year from 1985 onward**. Hover over any line to inspect its specific starting year.")
     
-    st_col1, st_col2 = st.columns([2, 1])
-    with st_col1:
-        chosen_index = st.selectbox(
-            "Select Historical Index Benchmark:",
+    ms_col1, ms_col2 = st.columns([2, 1])
+    with ms_col1:
+        chosen_ms_index = st.selectbox(
+            "Select Index Benchmark for Rolling Test:",
             options=["S&P 500 Total Return (^GSPC)", "FTSE 100 (^FTSE)"],
-            index=0
+            index=0,
+            key="ms_index_sel"
         )
-    with st_col2:
+    with ms_col2:
         st.markdown("<br>", unsafe_allow_html=True)
-        run_stress_test_btn = st.button("🚀 Run Historical Stress Test", use_container_width=True)
+        run_ms_btn = st.button("🚀 Run All-Start-Years Test", use_container_width=True)
 
-    if run_stress_test_btn:
-        ticker_symbol = "^GSPC" if "S&P" in chosen_index else "^FTSE"
-        with st.spinner(f"Fetching historical data for {ticker_symbol} from 1985 and running simulation..."):
-            hist_returns = fetch_historical_index_returns(ticker_symbol, start_date_str="1985-01-01")
-            if hist_returns is not None and not hist_returns.empty:
-                stress_engine = RetirementEngine(
-                    dob=active_p["dob"],
-                    retirement_age=int(active_p["ret_age"]),
-                    monthly_income=active_p["monthly_inc"],
-                    scenario=scenario_obj,
-                    historical_returns_series=hist_returns,
+    if run_ms_btn:
+        ticker_symbol = "^GSPC" if "S&P" in chosen_ms_index else "^FTSE"
+        with st.spinner(f"Fetching historical data and simulating rolling start years for {ticker_symbol}..."):
+            full_hist_returns = fetch_historical_index_returns(ticker_symbol, start_date_str="1985-01-01")
+            
+            if full_hist_returns is not None and not full_hist_returns.empty:
+                import plotly.graph_objects as go
+                
+                min_year = 1985
+                fig = go.Figure()
+                
+                for start_yr in range(min_year, 2023):
+                    sim_start_date = date(start_yr, 1, 1)
+                    subset_returns = full_hist_returns[full_hist_returns.index >= sim_start_date]
+                    if len(subset_returns) < 365:
+                        continue
+                        
+                    today_start = date.today()
+                    shifted_index = [today_start + timedelta(days=i) for i in range(len(subset_returns))]
+                    aligned_returns = pd.Series(subset_returns.values, index=shifted_index)
+                    
+                    roll_engine = RetirementEngine(
+                        dob=active_p["dob"],
+                        retirement_age=int(active_p["ret_age"]),
+                        monthly_income=active_p["monthly_inc"],
+                        scenario=scenario_obj,
+                        historical_returns_series=aligned_returns,
+                    )
+                    _, roll_age_df = roll_engine.run_simulation()
+                    
+                    fig.add_trace(go.Scatter(
+                        x=roll_age_df["age"],
+                        y=roll_age_df["total_portfolio"],
+                        mode='lines',
+                        name=f'Start Year {start_yr}',
+                        hovertemplate=f'<b>Start Year: {start_yr}</b><br>Age: %{{x}}<br>Portfolio: £%{{y:,.0f}}<extra></extra>',
+                        line=dict(width=1.5, color='rgba(100, 150, 250, 0.4)')
+                    ))
+                
+                fig.add_trace(go.Scatter(
+                    x=active_df["age"],
+                    y=active_df["total_portfolio"],
+                    mode='lines',
+                    name='Baseline (Smooth Return)',
+                    hovertemplate='<b>Baseline Projection</b><br>Age: %{x}<br>Portfolio: £%{y:,.0f}<extra></extra>',
+                    line=dict(width=3, color='rgb(255, 75, 75)')
+                ))
+                
+                fig.update_layout(
+                    title=f"Rolling Start Year Stress Test ({ticker_symbol})",
+                    xaxis_title="Age",
+                    yaxis_title="Total Portfolio Value (£)",
+                    hovermode="closest",
+                    height=600,
+                    template="streamlit"
                 )
-                _, stress_age_df = stress_engine.run_simulation()
                 
-                # Compare baseline vs stress test results
-                merged_stress_df = pd.DataFrame({
-                    "Age": active_df["age"],
-                    "Baseline Total Portfolio": active_df["total_portfolio"],
-                    "Historical Stress Test Portfolio": stress_age_df["total_portfolio"] if len(stress_age_df) == len(active_df) else stress_age_df["total_portfolio"].reindex(active_df.index, method="nearest")
-                }).set_index("Age")
-                
-                st.success(f"Successfully simulated against historical {chosen_index} data (1985–Present)!")
-                st.line_chart(merged_stress_df)
-                
-                stress_retired_df = stress_age_df[stress_age_df["is_retired"]]
-                stress_depleted = stress_retired_df[stress_retired_df["total_portfolio"] <= 0]
-                if not stress_depleted.empty:
-                    st.error(f"⚠️ Under historical {chosen_index} returns, portfolio depleted at **Age {int(stress_depleted.iloc[0]['age'])}**.")
-                else:
-                    st.success(f"✅ Portfolio successfully survived the entire 30+ year historical sequence of {chosen_index} without depletion!")
+                st.plotly_chart(fig, use_container_width=True)
+                st.success("✅ Multi-start-year simulation complete! Hover over any line to inspect its specific starting year.")
             else:
-                st.error("Failed to retrieve historical index data from Yahoo Finance. Please check your network connection.")
+                st.error("Failed to retrieve historical data for rolling simulation.")
 
 st.markdown("---")
 
