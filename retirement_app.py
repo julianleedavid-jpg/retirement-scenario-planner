@@ -335,15 +335,10 @@ if "active_scenario_name" not in st.session_state or st.session_state.active_sce
 # ----------------------------------------------------------------------
 
 def calculate_early_retirement_reduction_factor(start_age: float, npa: float = 65.0) -> float:
-    """
-    Calculates standard UK Public Sector / DB Actuarial Early Retirement Reduction Factor.
-    Standard GAD reduction table mapping years early (NPA - start_age) to pension payout factor.
-    """
     years_early = max(0.0, npa - start_age)
     if years_early == 0:
         return 1.0
     
-    # Standard GAD DB Early Retirement Pension Reduction Factors
     gad_reductions = {
         0: 0.00,
         1: 0.050,
@@ -462,11 +457,13 @@ class RetirementEngine:
         retirement_age: int,
         monthly_income: float,
         scenario: Scenario,
+        historical_returns_series: pd.Series = None,
     ):
         self.dob = dob
         self.retirement_age = retirement_age
         self.monthly_income = monthly_income
         self.scenario = scenario
+        self.historical_returns_series = historical_returns_series
 
     @staticmethod
     def _get_daily_rate(annual_rate: float) -> float:
@@ -537,7 +534,6 @@ class RetirementEngine:
         except ValueError:
             target_100_date = date(self.dob.year + 100, 2, 28)
 
-        # Dynamic Annuity/DB pension start date
         try:
             annuity_start_date = date(self.dob.year + self.scenario.annuity_start_age, self.dob.month, self.dob.day)
         except ValueError:
@@ -557,7 +553,6 @@ class RetirementEngine:
         last_tax_year = self._get_tax_year(current_date)
         annuity_purchased = False
         
-        # Crash & Market Index Recovery tracking variables
         crash_applied = False
         in_market_recovery = False
         market_index = 1.0
@@ -566,10 +561,8 @@ class RetirementEngine:
         crash_capped_income = None
         
         lump_sums_applied = [False] * len(self.scenario.lump_sums)
-
         gilt_events_map = self._build_gilt_events()
 
-        # Calculate standard DB/Annuity Base Payout with optional Actuarial Reduction
         base_annuity = self.scenario.annuity_annual
         if self.scenario.apply_db_early_reduction and self.scenario.annuity_start_age < self.scenario.annuity_npa:
             db_red_factor = calculate_early_retirement_reduction_factor(self.scenario.annuity_start_age, self.scenario.annuity_npa)
@@ -579,19 +572,16 @@ class RetirementEngine:
             years_to_start = (annuity_start_date - start_date).days / 365.25
             base_annuity *= ((1.0 + self.scenario.inflation_rate) ** max(0.0, years_to_start))
 
-        # Dynamic Nuvos Accrual & Inflation Engine starting strictly from baseline date
         nuvos_baseline = self.scenario.nuvos_annual if self.scenario.has_nuvos_pension else 0.0
         nuvos_accumulated = nuvos_baseline
         current_nuvos_salary = self.scenario.nuvos_salary
 
-        # Track Nuvos growth timeline from statement baseline date up to Target Retirement Age
         nuvos_sim_date = self.scenario.nuvos_baseline_date
         try:
             ret_date_limit = date(self.dob.year + self.retirement_age, self.dob.month, self.dob.day)
         except ValueError:
             ret_date_limit = date(self.dob.year + self.retirement_age, 2, 28)
 
-        # Pre-simulate Nuvos growth from March 2025 baseline to today (start_date)
         if self.scenario.has_nuvos_pension and nuvos_sim_date < start_date:
             curr_sim = nuvos_sim_date + timedelta(days=1)
             while curr_sim <= start_date:
@@ -603,7 +593,6 @@ class RetirementEngine:
                         nuvos_accumulated += new_accrual
                 curr_sim += timedelta(days=1)
 
-        # Calculate finalized Nuvos payout at Target Retirement Age including Early Reduction Factor
         nuvos_payout_at_retire = 0.0
         nuvos_calculated_at_retire = False
 
@@ -617,7 +606,6 @@ class RetirementEngine:
                 isa_credited_this_tax_year = 0.0
                 last_tax_year = current_tax_year
 
-            # Ongoing Nuvos Active Accrual vs Inflation Revaluation Check (from start_date forward)
             if self.scenario.has_nuvos_pension and current_date < ret_date_limit:
                 if current_date > start_date and current_date.day == 1 and current_date.month == 4:
                     nuvos_accumulated *= (1.0 + self.scenario.inflation_rate)
@@ -627,7 +615,6 @@ class RetirementEngine:
                         new_accrual = current_nuvos_salary * (self.scenario.nuvos_accrual_rate / 100.0)
                         nuvos_accumulated += new_accrual
 
-            # Apply early retirement actuarial reduction factor to Nuvos pension at retirement age
             if self.scenario.has_nuvos_pension and current_date >= ret_date_limit and not nuvos_calculated_at_retire:
                 unreduced_nuvos = nuvos_accumulated
                 if self.scenario.apply_nuvos_early_reduction and self.retirement_age < self.scenario.nuvos_npa:
@@ -637,7 +624,6 @@ class RetirementEngine:
                     nuvos_payout_at_retire = unreduced_nuvos
                 nuvos_calculated_at_retire = True
 
-            # Standard Annuity Calculation
             current_annual_annuity = 0.0
             if current_date >= annuity_start_date and base_annuity > 0:
                 if self.scenario.annuity_type == "Flat Rate (Level)":
@@ -650,7 +636,6 @@ class RetirementEngine:
                         (1.0 + self.scenario.inflation_rate) ** max(0, years_since_annuity)
                     )
 
-            # Nuvos Annual Payout escalating post-retirement with CPI
             current_annual_nuvos = 0.0
             if self.scenario.has_nuvos_pension and current_date >= ret_date_limit:
                 years_since_nuvos_start = current_date.year - ret_date_limit.year - (
@@ -660,7 +645,6 @@ class RetirementEngine:
 
             total_combined_annual_pension = current_annual_annuity + current_annual_nuvos
 
-            # Lump sum injections processing
             for idx, ls in enumerate(self.scenario.lump_sums):
                 if not lump_sums_applied[idx] and ls.amount != 0 and current_date >= ls.injection_date:
                     if ls.amount > 0:
@@ -738,9 +722,6 @@ class RetirementEngine:
                         elif target_pot == "Other Investment":
                             other += amt
 
-            # ------------------------------------------------------------------
-            # Market Crash Trigger & Market Recovery Tracking
-            # ------------------------------------------------------------------
             if (
                 not crash_applied
                 and self.scenario.crash_pct > 0
@@ -807,24 +788,29 @@ class RetirementEngine:
                 isa += self.scenario.isa.monthly_contrib
                 other += self.scenario.other_investment.monthly_contrib
 
-            # ------------------------------------------------------------------
-            # Dynamic Pot Growth & Accelerated Rebound Return Multiplier
-            # ------------------------------------------------------------------
-            if in_market_recovery and market_index >= pre_crash_index_target:
-                in_market_recovery = False
+            # Determine Daily Returns (using historical series if provided, otherwise standard config)
+            if self.historical_returns_series is not None and current_date in self.historical_returns_series.index:
+                day_ret = self.historical_returns_series.loc[current_date]
+                sipp *= (1.0 + day_ret)
+                wp_taxable *= (1.0 + day_ret)
+                wp_tax_free *= (1.0 + day_ret)
+                isa *= (1.0 + day_ret)
+                market_index *= (1.0 + day_ret)
+            else:
+                if in_market_recovery and market_index >= pre_crash_index_target:
+                    in_market_recovery = False
 
-            return_mult = 2.0 if in_market_recovery else 1.0
+                return_mult = 2.0 if in_market_recovery else 1.0
 
-            effective_sipp_ret = self.scenario.sipp.annual_return * return_mult
-            effective_wp_ret = self.scenario.workplace_pension_return * return_mult
-            effective_isa_ret = self.scenario.isa.annual_return * return_mult
+                effective_sipp_ret = self.scenario.sipp.annual_return * return_mult
+                effective_wp_ret = self.scenario.workplace_pension_return * return_mult
+                effective_isa_ret = self.scenario.isa.annual_return * return_mult
 
-            sipp *= 1.0 + self._get_daily_rate(effective_sipp_ret)
-            wp_taxable *= 1.0 + self._get_daily_rate(effective_wp_ret)
-            wp_tax_free *= 1.0 + self._get_daily_rate(effective_wp_ret)
-            isa *= 1.0 + self._get_daily_rate(effective_isa_ret)
-            
-            market_index *= 1.0 + self._get_daily_rate(effective_isa_ret)
+                sipp *= 1.0 + self._get_daily_rate(effective_sipp_ret)
+                wp_taxable *= 1.0 + self._get_daily_rate(effective_wp_ret)
+                wp_tax_free *= 1.0 + self._get_daily_rate(effective_wp_ret)
+                isa *= 1.0 + self._get_daily_rate(effective_isa_ret)
+                market_index *= 1.0 + self._get_daily_rate(effective_isa_ret)
 
             other_growth = other * self._get_daily_rate(self.scenario.other_investment.annual_return)
             other_tax_on_growth = other_growth * 0.18
@@ -1086,6 +1072,27 @@ def find_minimum_retirement_age(dob: date, monthly_income: float, base_scenario:
         if depleted.empty:
             return test_age
     return None
+
+
+@st.cache_data(ttl=86400)
+def fetch_historical_index_returns(ticker: str, start_date_str: str = "1985-01-01") -> pd.Series:
+    """Fetches historical adjusted close prices from Yahoo Finance and computes daily returns."""
+    import yfinance as yf
+    try:
+        data = yf.download(ticker, start=start_date_str, progress=False)
+        if data.empty:
+            return None
+        # Handle multi-index columns if returned by newer yfinance versions
+        if isinstance(data.columns, pd.MultiIndex):
+            prices = data[("Adj Close", ticker)] if ("Adj Close", ticker) in data.columns else data.iloc[:, 0]
+        else:
+            prices = data["Adj Close"] if "Adj Close" in data.columns else data.iloc[:, 0]
+        
+        daily_ret = prices.pct_change().dropna()
+        daily_ret.index = pd.to_datetime(daily_ret.index).date
+        return daily_ret
+    except Exception as e:
+        return None
 
 
 # ----------------------------------------------------------------------
@@ -1676,6 +1683,58 @@ col4.metric("Desired Monthly Income", f"£{int(round(active_p['monthly_inc'])):,
 col5.metric("Desired Annual Income", f"£{annual_inc:,}")
 col6.metric("Portfolio Depleted / Age 100", depleted_val_str)
 col7.metric("Minimum retirement age for scenario", min_ret_age_str)
+
+st.markdown("---")
+
+# ----------------------------------------------------------------------
+# Interactive Historical Index Stress Test Feature (S&P 500 / FTSE 100 since 1985)
+# ----------------------------------------------------------------------
+with st.expander("📉 Historical Market Index Stress Test (1985–Present)", expanded=False):
+    st.markdown("Test your active portfolio profile against actual recorded historical index returns starting from 1985 onward (incorporating Black Monday 1987, the Dot-Com Crash, the 2008 GFC, and the 2022 inflation shock).")
+    
+    st_col1, st_col2 = st.columns([2, 1])
+    with st_col1:
+        chosen_index = st.selectbox(
+            "Select Historical Index Benchmark:",
+            options=["S&P 500 Total Return (^GSPC)", "FTSE 100 (^FTSE)"],
+            index=0
+        )
+    with st_col2:
+        st.markdown("<br>", unsafe_allow_html=True)
+        run_stress_test_btn = st.button("🚀 Run Historical Stress Test", use_container_width=True)
+
+    if run_stress_test_btn:
+        ticker_symbol = "^GSPC" if "S&P" in chosen_index else "^FTSE"
+        with st.spinner(f"Fetching historical data for {ticker_symbol} from 1985 and running simulation..."):
+            hist_returns = fetch_historical_index_returns(ticker_symbol, start_date_str="1985-01-01")
+            if hist_returns is not None and not hist_returns.empty:
+                stress_engine = RetirementEngine(
+                    dob=active_p["dob"],
+                    retirement_age=int(active_p["ret_age"]),
+                    monthly_income=active_p["monthly_inc"],
+                    scenario=scenario_obj,
+                    historical_returns_series=hist_returns,
+                )
+                _, stress_age_df = stress_engine.run_simulation()
+                
+                # Compare baseline vs stress test results
+                merged_stress_df = pd.DataFrame({
+                    "Age": active_df["age"],
+                    "Baseline Total Portfolio": active_df["total_portfolio"],
+                    "Historical Stress Test Portfolio": stress_age_df["total_portfolio"] if len(stress_age_df) == len(active_df) else stress_age_df["total_portfolio"].reindex(active_df.index, method="nearest")
+                }).set_index("Age")
+                
+                st.success(f"Successfully simulated against historical {chosen_index} data (1985–Present)!")
+                st.line_chart(merged_stress_df)
+                
+                stress_retired_df = stress_age_df[stress_age_df["is_retired"]]
+                stress_depleted = stress_retired_df[stress_retired_df["total_portfolio"] <= 0]
+                if not stress_depleted.empty:
+                    st.error(f"⚠️ Under historical {chosen_index} returns, portfolio depleted at **Age {int(stress_depleted.iloc[0]['age'])}**.")
+                else:
+                    st.success(f"✅ Portfolio successfully survived the entire 30+ year historical sequence of {chosen_index} without depletion!")
+            else:
+                st.error("Failed to retrieve historical index data from Yahoo Finance. Please check your network connection.")
 
 st.markdown("---")
 
